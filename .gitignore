@@ -1,0 +1,19 @@
+# Environment / secrets
+.env
+
+# PHP dependencies
+/vendor/
+
+# Node dependencies
+node_modules/
+
+# Runtime files
+Healthcare-MVP/backend/storage/logs/*
+Healthcare-MVP/backend/storage/sessions/*
+
+# VS Code
+.vscode/
+
+# OS files
+.DS_Store
+Thumbs.db
