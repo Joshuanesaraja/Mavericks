@@ -109,13 +109,13 @@ class UserRepository
     public function assignRole(int $userId, int $roleId): bool
     {
         $stmt = $this->db->prepare(
-            "INSERT INTO user_roles (user_id, role_id)
-             VALUES (:user_id, :role_id)"
+            "INSERT IGNORE INTO user_roles (user_id, role_id)
+            VALUES (:user_id, :role_id)"
         );
 
         return $stmt->execute([
-            ':user_id' => $userId,
-            ':role_id' => $roleId
+            'user_id' => $userId,
+            'role_id' => $roleId
         ]);
     }
 
@@ -135,8 +135,6 @@ class UserRepository
         if (!$roleId) {
             return false;
         }
-
-        $this->removeRoles($userId);
 
         return $this->assignRole($userId, $roleId);
     }
