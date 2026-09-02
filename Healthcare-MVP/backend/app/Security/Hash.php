@@ -17,4 +17,12 @@ class Hash
     {
         return password_verify($password, $hashedPassword);
     }
+
+    /**
+     * Hash a refresh token before storing it in the database.
+     */
+    public static function token(string $token): string
+    {
+        return hash('sha256', $token);
+    }
 }
