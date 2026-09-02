@@ -2,7 +2,9 @@
 .env
 
 # PHP dependencies
-/vendor/
+vendor/
+composer.phar
+
 
 # Node dependencies
 node_modules/
