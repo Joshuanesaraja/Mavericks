@@ -10,6 +10,7 @@ node_modules/
 # Runtime files
 Healthcare-MVP/backend/storage/logs/*
 Healthcare-MVP/backend/storage/sessions/*
+Healthcare-MVP/backend/storage/rate_limit/*
 
 # VS Code
 .vscode/

@@ -6,6 +6,7 @@ require_once __DIR__ . '/../Middleware/EncryptionMiddleware.php';
 require_once __DIR__ . '/../Middleware/AuthMiddleware.php';
 require_once __DIR__ . '/../Middleware/RoleMiddleware.php';
 require_once __DIR__ . '/../Controllers/UserController.php';
+require_once __DIR__ . '/../Middleware/RateLimit.php';
 
 class Router
 {
@@ -39,6 +40,11 @@ class Router
         }
 
         if ($method === 'POST' && $request === 'login') {
+
+            if (!RateLimit::handle('login')) {
+                return;
+            }
+
             AuthController::login($decryptedInput);
             return;
         }
@@ -77,6 +83,29 @@ class Router
             }
 
             UserController::profile($auth);
+
+            return;
+        }
+
+        if ($method === 'POST' && $request === 'change-password') {
+
+            $auth = AuthMiddleware::handle();
+
+            if ($auth === null) {
+                return;
+            }
+
+            if (!RoleMiddleware::handle(
+                $auth,
+                ['Admin', 'Provider', 'Nurse', 'Patient', 'Pharmacist']
+            )) {
+                return;
+            }
+
+            UserController::changePassword(
+                $auth,
+                $decryptedInput
+            );
 
             return;
         }

@@ -441,10 +441,15 @@ class AuthController
             Cookie::delete('access_token');
             Cookie::delete('refresh_token');
 
+            session_unset();
+            session_regenerate_id(true);
+            CSRF::regenerate();
+
             Response::success(
                 null,
-                'Logout successful'
+                'Logged out successfully'
             );
+            
         } catch (Throwable $e) {
             Response::error('Logout failed', 500);
         }
