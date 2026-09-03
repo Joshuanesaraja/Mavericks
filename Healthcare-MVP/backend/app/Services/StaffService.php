@@ -12,7 +12,6 @@ class StaffService
     private const STAFF_ROLES = [
         'provider',
         'nurse',
-        'receptionist',
         'pharmacist'
     ];
 
