@@ -3,14 +3,28 @@
 require_once __DIR__ . '/../Config/database.php';
 require_once __DIR__ . '/../Security/Hash.php';
 require_once __DIR__ . '/../Security/JWT.php';
+require_once __DIR__ . '/../Helpers/Response.php';
+require_once __DIR__ . '/../Helpers/Cookie.php';
+require_once __DIR__ . '/../Security/CSRF.php';
 
 class AuthController
 {
-    // REGISTER
-    
-    public static function register(): void
+    public static function csrfToken(): void
     {
-        $input = json_decode(file_get_contents('php://input'), true);
+        $token = CSRF::generate();
+
+        Response::success(
+            [
+                'csrf_token' => $token
+            ],
+            'CSRF token generated'
+        );
+    }
+
+    // REGISTER
+
+    public static function register(array $input): void
+    {
 
         $name = trim($input['name'] ?? '');
         $email = trim($input['email'] ?? '');
@@ -23,22 +37,15 @@ class AuthController
             $password === '' ||
             $tenantName === ''
         ) {
-            http_response_code(400);
-
-            echo json_encode([
-                'success' => false,
-                'message' => 'Name, email, password and tenant name are required'
-            ]);
+            Response::error(
+                'Name, email, password and tenant name are required',
+                400
+            );
             return;
         }
 
         if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
-            http_response_code(400);
-
-            echo json_encode([
-                'success' => false,
-                'message' => 'Invalid email address'
-            ]);
+            Response::error('Invalid email address', 400);
             return;
         }
 
@@ -55,12 +62,7 @@ class AuthController
             ]);
 
             if ($stmt->fetch()) {
-                http_response_code(409);
-
-                echo json_encode([
-                    'success' => false,
-                    'message' => 'Email already registered'
-                ]);
+                Response::error('Email already registered', 409);
                 return;
             }
 
@@ -124,46 +126,33 @@ class AuthController
 
             $db->commit();
 
-            http_response_code(201);
-
-            echo json_encode([
-                'success' => true,
-                'data' => [
+            Response::success(
+                [
                     'user_id' => $userId,
                     'tenant_id' => $tenantId
                 ],
-                'message' => 'Registration successful'
-            ]);
+                'Registration successful',
+                201
+            );
         } catch (Throwable $e) {
             if (isset($db) && $db->inTransaction()) {
                 $db->rollBack();
             }
 
-            http_response_code(500);
-
-            echo json_encode([
-                'success' => false,
-                'message' => 'Registration failed'
-            ]);
+            Response::error('Registration failed', 500);
         }
     }
 
     // LOGIN
 
-    public static function login(): void
+    public static function login(array $input): void
     {
-        $input = json_decode(file_get_contents('php://input'), true);
 
         $email = trim($input['email'] ?? '');
         $password = $input['password'] ?? '';
 
         if ($email === '' || $password === '') {
-            http_response_code(400);
-
-            echo json_encode([
-                'success' => false,
-                'message' => 'Email and password are required'
-            ]);
+            Response::error('Email and password are required', 400);
             return;
         }
 
@@ -185,22 +174,12 @@ class AuthController
             $user = $stmt->fetch();
 
             if (!$user || !Hash::verify($password, $user['password_hash'])) {
-                http_response_code(401);
-
-                echo json_encode([
-                    'success' => false,
-                    'message' => 'Invalid email or password'
-                ]);
+                Response::error('Invalid email or password', 401);
                 return;
             }
 
             if ($user['status'] !== 'active') {
-                http_response_code(403);
-
-                echo json_encode([
-                    'success' => false,
-                    'message' => 'User account is inactive'
-                ]);
+                Response::error('User account is inactive', 403);
                 return;
             }
 
@@ -225,43 +204,254 @@ class AuthController
                 $roles
             );
 
-            http_response_code(200);
+            // Generate refresh token.
+            $refreshToken = JWT::generateRefreshToken(
+                (int) $user['id'],
+                (int) $user['tenant_id']
+            );
 
-            echo json_encode([
-                'success' => true,
-                'data' => [
+            // Hash the refresh token before storing it.
+            $refreshTokenHash = Hash::token($refreshToken);
+
+            $refreshExpiresAt = date(
+                'Y-m-d H:i:s',
+                time() + (30 * 24 * 60 * 60)
+            );
+
+            $stmt = $db->prepare(
+                'INSERT INTO refresh_tokens
+        (user_id, token_hash, expires_at)
+     VALUES
+        (:user_id, :token_hash, :expires_at)'
+            );
+
+            $stmt->execute([
+                'user_id' => $user['id'],
+                'token_hash' => $refreshTokenHash,
+                'expires_at' => $refreshExpiresAt
+            ]);
+
+            // Store access token in an HttpOnly cookie.
+            Cookie::set(
+                'access_token',
+                $accessToken,
+                time() + (15 * 60)
+            );
+
+            // Store refresh token in an HttpOnly cookie.
+            Cookie::set(
+                'refresh_token',
+                $refreshToken,
+                time() + (30 * 24 * 60 * 60)
+            );
+
+            // Regenerate CSRF token after successful login
+            CSRF::regenerate();
+
+            Response::success(
+                [
                     'user_id' => (int) $user['id'],
                     'tenant_id' => (int) $user['tenant_id'],
                     'name' => $user['name'],
                     'email' => $user['email'],
-                    'roles' => $roles,
-                    'access_token' => $accessToken
+                    'roles' => $roles
                 ],
-                'message' => 'Login successful'
-            ]);
+                'Login successful'
+            );
         } catch (Throwable $e) {
-            http_response_code(500);
-
-            echo json_encode([
-                'success' => false,
-                'message' => 'Login failed'
-            ]);
+            Response::error('Login failed', 500);
         }
     }
 
-    public static function refresh(): void
+    // REFRESH
+
+    public static function refresh(array $input): void
     {
-        echo json_encode([
-            'success' => true,
-            'message' => 'Refresh endpoint reached'
-        ]);
+        $refreshToken = $_COOKIE['refresh_token'] ?? '';
+
+        if ($refreshToken === '') {
+            Response::error('Refresh token is required', 401);
+            return;
+        }
+
+        try {
+            // Verify the refresh token JWT.
+            $payload = JWT::decode($refreshToken);
+
+            if (($payload->type ?? '') !== 'refresh') {
+                Response::error('Invalid refresh token', 401);
+                return;
+            }
+
+            $userId = (int) $payload->sub;
+            $tenantId = (int) $payload->tenant_id;
+
+            // Hash the supplied refresh token.
+            $tokenHash = Hash::token($refreshToken);
+
+            $db = Database::connect();
+
+            // Find the stored refresh token.
+            $stmt = $db->prepare(
+                'SELECT id, user_id, expires_at, revoked
+             FROM refresh_tokens
+             WHERE token_hash = :token_hash
+             LIMIT 1'
+            );
+
+            $stmt->execute([
+                'token_hash' => $tokenHash
+            ]);
+
+            $storedToken = $stmt->fetch();
+
+            if (!$storedToken) {
+                Response::error('Invalid refresh token', 401);
+                return;
+            }
+
+            if ((int) $storedToken['user_id'] !== $userId) {
+                Response::error('Invalid refresh token', 401);
+                return;
+            }
+
+            if ((bool) $storedToken['revoked']) {
+                Response::error('Refresh token has been revoked', 401);
+                return;
+            }
+
+            if (strtotime($storedToken['expires_at']) <= time()) {
+                Response::error('Refresh token has expired', 401);
+                return;
+            }
+
+            // Get the user's current roles.
+            $stmt = $db->prepare(
+                'SELECT r.name
+             FROM roles r
+             INNER JOIN user_roles ur ON ur.role_id = r.id
+             WHERE ur.user_id = :user_id'
+            );
+
+            $stmt->execute([
+                'user_id' => $userId
+            ]);
+
+            $roles = $stmt->fetchAll(PDO::FETCH_COLUMN);
+
+            $db->beginTransaction();
+
+            // Revoke the old refresh token.
+            $stmt = $db->prepare(
+                'UPDATE refresh_tokens
+             SET revoked = TRUE
+             WHERE id = :id'
+            );
+
+            $stmt->execute([
+                'id' => $storedToken['id']
+            ]);
+
+            // Generate new tokens.
+            $newAccessToken = JWT::generateAccessToken(
+                $userId,
+                $tenantId,
+                $roles
+            );
+
+            $newRefreshToken = JWT::generateRefreshToken(
+                $userId,
+                $tenantId
+            );
+
+            // Store only the hash of the new refresh token.
+            $newRefreshTokenHash = Hash::token($newRefreshToken);
+
+            $newRefreshExpiresAt = date(
+                'Y-m-d H:i:s',
+                time() + (30 * 24 * 60 * 60)
+            );
+
+            $stmt = $db->prepare(
+                'INSERT INTO refresh_tokens
+                (user_id, token_hash, expires_at)
+             VALUES
+                (:user_id, :token_hash, :expires_at)'
+            );
+
+            $stmt->execute([
+                'user_id' => $userId,
+                'token_hash' => $newRefreshTokenHash,
+                'expires_at' => $newRefreshExpiresAt
+            ]);
+
+            $db->commit();
+
+            // Replace both cookies with the new tokens.
+            Cookie::set(
+                'access_token',
+                $newAccessToken,
+                time() + (15 * 60)
+            );
+
+            Cookie::set(
+                'refresh_token',
+                $newRefreshToken,
+                time() + (30 * 24 * 60 * 60)
+            );
+
+            // Regenerate CSRF token after token refresh
+            CSRF::regenerate();
+
+            Response::success(
+                null,
+                'Token refreshed successfully'
+            );
+        } catch (Throwable $e) {
+            if (isset($db) && $db->inTransaction()) {
+                $db->rollBack();
+            }
+
+            Response::error('Invalid refresh token', 401);
+        }
     }
 
-    public static function logout(): void
+    public static function logout(array $input): void
     {
-        echo json_encode([
-            'success' => true,
-            'message' => 'Logout endpoint reached'
-        ]);
+        $refreshToken = $_COOKIE['refresh_token'] ?? '';
+
+        try {
+            if ($refreshToken !== '') {
+                $tokenHash = Hash::token($refreshToken);
+
+                $db = Database::connect();
+
+                $stmt = $db->prepare(
+                    'UPDATE refresh_tokens
+                 SET revoked = TRUE
+                 WHERE token_hash = :token_hash'
+                );
+
+                $stmt->execute([
+                    'token_hash' => $tokenHash
+                ]);
+            }
+
+            // Remove authentication cookies.
+            Cookie::delete('access_token');
+            Cookie::delete('refresh_token');
+
+            session_unset();
+            session_regenerate_id(true);
+            CSRF::regenerate();
+
+            Response::success(
+                null,
+                'Logged out successfully'
+            );
+            
+        } catch (Throwable $e) {
+            Response::error('Logout failed', 500);
+        }
     }
 }
