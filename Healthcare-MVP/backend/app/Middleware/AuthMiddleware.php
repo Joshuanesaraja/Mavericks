@@ -1,85 +1,79 @@
 <?php
 
 require_once __DIR__ . '/../Security/JWT.php';
+require_once __DIR__ . '/../Helpers/Response.php';
 
 class AuthMiddleware
 {
     /**
-     * Authenticate request via JWT Bearer token.
-     * Returns decoded user array if valid, or sends 401 response and returns null.
+     * Authenticate request via Cookie or Authorization Bearer token header.
+     * Returns decoded JWT object ($decoded->sub, $decoded->tenant_id, $decoded->roles) or null on failure.
      */
-    public static function authenticate(): ?array
+    public static function handle(): ?object
     {
-        $authHeader = self::getAuthorizationHeader();
+        $token = $_COOKIE['access_token'] ?? self::getBearerToken();
 
-        if (empty($authHeader)) {
-            http_response_code(401);
-            echo json_encode([
-                'success' => false,
-                'message' => 'Authorization header missing'
-            ]);
+        if (empty($token)) {
+            Response::error('Authentication required', 401);
             return null;
         }
-
-        if (!preg_match('/Bearer\s(\S+)/i', $authHeader, $matches)) {
-            http_response_code(401);
-            echo json_encode([
-                'success' => false,
-                'message' => 'Invalid Authorization header format'
-            ]);
-            return null;
-        }
-
-        $jwtToken = $matches[1];
 
         try {
-            $decoded = JWT::decode($jwtToken);
+            $decoded = JWT::decode($token);
 
             if (($decoded->type ?? '') !== 'access') {
-                http_response_code(401);
-                echo json_encode([
-                    'success' => false,
-                    'message' => 'Invalid token type'
-                ]);
+                Response::error('Invalid access token', 401);
                 return null;
             }
 
-            return [
-                'userId'   => (int) ($decoded->sub ?? 0),
-                'tenantId' => (int) ($decoded->tenant_id ?? 0),
-                'roles'    => (array) ($decoded->roles ?? [])
-            ];
+            if (!isset($decoded->tenant_id)) {
+                Response::error('Tenant information missing', 401);
+                return null;
+            }
+
+            return $decoded;
         } catch (Throwable $e) {
-            http_response_code(401);
-            echo json_encode([
-                'success' => false,
-                'message' => 'Unauthorized: ' . $e->getMessage()
-            ]);
+            Response::error('Invalid or expired access token', 401);
             return null;
         }
     }
 
     /**
-     * Helper to extract Authorization header safely across server setups.
+     * Legacy helper method for backward compatibility.
      */
-    private static function getAuthorizationHeader(): string
+    public static function authenticate(): ?array
     {
+        $decoded = self::handle();
+        if (!$decoded) {
+            return null;
+        }
+
+        return [
+            'userId'   => (int) ($decoded->sub ?? 0),
+            'tenantId' => (int) ($decoded->tenant_id ?? 0),
+            'roles'    => (array) ($decoded->roles ?? [])
+        ];
+    }
+
+    private static function getBearerToken(): string
+    {
+        $authHeader = '';
         if (isset($_SERVER['HTTP_AUTHORIZATION'])) {
-            return trim($_SERVER['HTTP_AUTHORIZATION']);
-        }
-        if (isset($_SERVER['REDIRECT_HTTP_AUTHORIZATION'])) {
-            return trim($_SERVER['REDIRECT_HTTP_AUTHORIZATION']);
-        }
-        if (function_exists('apache_request_headers')) {
-            $requestHeaders = apache_request_headers();
-            $requestHeaders = array_combine(
-                array_map('ucwords', array_keys($requestHeaders)),
-                array_values($requestHeaders)
-            );
-            if (isset($requestHeaders['Authorization'])) {
-                return trim($requestHeaders['Authorization']);
+            $authHeader = trim($_SERVER['HTTP_AUTHORIZATION']);
+        } elseif (isset($_SERVER['REDIRECT_HTTP_AUTHORIZATION'])) {
+            $authHeader = trim($_SERVER['REDIRECT_HTTP_AUTHORIZATION']);
+        } elseif (function_exists('apache_request_headers')) {
+            $headers = apache_request_headers();
+            $headers = array_combine(array_map('ucwords', array_keys($headers)), array_values($headers));
+            if (isset($headers['Authorization'])) {
+                $authHeader = trim($headers['Authorization']);
             }
         }
+
+        if (preg_match('/Bearer\s(\S+)/i', $authHeader, $matches)) {
+            return $matches[1];
+        }
+
         return '';
     }
 }
