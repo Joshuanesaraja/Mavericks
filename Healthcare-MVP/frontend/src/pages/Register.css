@@ -1,0 +1,77 @@
+.register-page {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: #f8fafc;
+}
+
+.register-card {
+  width: 100%;
+  max-width: 460px;
+  padding: 32px;
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  box-shadow: 0 10px 30px rgba(15, 23, 42, 0.08);
+}
+
+.register-title {
+  margin-bottom: 8px;
+  text-align: center;
+  font-size: 28px;
+}
+
+.register-subtitle {
+  margin-bottom: 28px;
+  text-align: center;
+  color: #64748b;
+}
+
+.register-form {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.register-error,
+.register-success {
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: 8px;
+  font-size: 14px;
+}
+
+.register-error {
+  background: #fee2e2;
+  color: #b91c1c;
+}
+
+.register-success {
+  background: #dcfce7;
+  color: #15803d;
+}
+
+.register-button {
+  width: 100%;
+  padding: 11px 16px;
+  border: none;
+  border-radius: 8px;
+  background: #2563eb;
+  color: #ffffff;
+  font-weight: 600;
+}
+
+.register-button:hover {
+  background: #1d4ed8;
+}
+
+.back-login-button {
+  width: 100%;
+  margin-top: 12px;
+  padding: 10px 16px;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  background: #ffffff;
+}
