@@ -2,6 +2,7 @@
 
 require_once __DIR__ . '/../Security/JWT.php';
 require_once __DIR__ . '/../Helpers/Response.php';
+require_once __DIR__ . '/../Repositories/UserRepository.php';
 
 class AuthMiddleware
 {
@@ -29,9 +30,31 @@ class AuthMiddleware
                 return null;
             }
 
+            // Verify that the user still exists
+            // and belongs to the tenant in the token.
+            $user = UserRepository::findById(
+                (int) $decoded->sub,
+                (int) $decoded->tenant_id
+            );
+
+            if ($user === null) {
+                Response::error('User not found', 401);
+                return null;
+            }
+
+            // Inactive users cannot access protected APIs.
+            if (($user['status'] ?? '') !== 'active') {
+                Response::error('Account is inactive', 403);
+                return null;
+            }
+
             return $decoded;
-        } catch (Throwable $e) {
-            Response::error('Invalid or expired access token', 401);
+
+            } catch (Throwable $e) {
+                Response::error(
+                    'Invalid or expired access token',
+                    401
+                );
             return null;
         }
     }
