@@ -449,7 +449,7 @@ class AuthController
                 null,
                 'Logged out successfully'
             );
-            
+
         } catch (Throwable $e) {
             Response::error('Logout failed', 500);
         }

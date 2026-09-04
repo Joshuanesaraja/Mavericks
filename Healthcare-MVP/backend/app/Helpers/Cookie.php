@@ -7,7 +7,7 @@ class Cookie
         string $value,
         int $expires
     ): void {
-        
+
         // For our local http://localhost:8000 testing, Secure must be false, otherwise the browser/Postman may refuse to store/send the cookie.
         $secure = (
             isset($_SERVER['HTTPS'])

@@ -3,6 +3,10 @@
 
 # PHP dependencies
 vendor/
+# PHP dependencies
+vendor/
+Healthcare-MVP/backend/vendor/
+composer.phar
 
 # Node dependencies
 node_modules/
