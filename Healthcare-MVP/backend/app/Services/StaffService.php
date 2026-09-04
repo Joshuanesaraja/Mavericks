@@ -1,9 +1,6 @@
 <?php
 
-namespace App\Services;
-
-use App\Repositories\UserRepository;
-use RuntimeException;
+require_once __DIR__ . '/../Repositories/UserRepository.php';
 
 class StaffService
 {
@@ -30,6 +27,12 @@ class StaffService
             array_filter(
                 $users,
                 function (array $user): bool {
+
+                    // Only active staff should appear
+                    if (($user['status'] ?? '') !== 'active') {
+                        return false;
+                    }
+
                     foreach ($user['roles'] as $role) {
                         if (in_array(
                             strtolower($role),
@@ -59,10 +62,65 @@ class StaffService
             );
         }
 
-        return $this->userRepository->assignRoleToUserByName(
+        // Verify user belongs to this tenant
+        $user = $this->userRepository->findById(
+            $userId,
+            $tenantId
+        );
+
+        if ($user === null) {
+            throw new RuntimeException(
+                'User not found.'
+            );
+        }
+
+        // Convert provider -> Provider
+        $roleName = ucfirst($role);
+
+        $roleId = $this->userRepository->findRoleIdByName(
+            $roleName
+        );
+
+        if ($roleId === null) {
+            throw new RuntimeException(
+                'Role not found.'
+            );
+        }
+
+        // Remove existing roles
+        $this->userRepository->removeRoles(
+            $userId,
+            $tenantId
+        );
+
+        // Assign new staff role
+        return $this->userRepository->assignRole(
+            $userId,
+            $roleId
+        );
+    }
+
+    public function deactivateStaff(
+        int $userId,
+        int $tenantId
+    ): bool {
+        // Verify user belongs to this tenant
+        $user = $this->userRepository->findById(
+            $userId,
+            $tenantId
+        );
+
+        if ($user === null) {
+            throw new RuntimeException(
+                'Staff not found.'
+            );
+        }
+
+        // Soft delete = deactivate the user
+        return $this->userRepository->updateStatus(
             $userId,
             $tenantId,
-            $role
+            'inactive'
         );
     }
 }

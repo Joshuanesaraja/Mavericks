@@ -61,10 +61,13 @@ class PatientService
         ?int $userId,
         string $encryptedData
     ): bool {
-        $this->getById(
-            $patientId,
-            $tenantId
-        );
+        if (trim($encryptedData) === '') {
+            throw new RuntimeException(
+                'Encrypted patient data is required.'
+            );
+        }
+
+        $this->getById($patientId, $tenantId);
 
         return $this->repository->update(
             $patientId,
@@ -78,10 +81,7 @@ class PatientService
         int $patientId,
         int $tenantId
     ): bool {
-        $this->getById(
-            $patientId,
-            $tenantId
-        );
+        $this->getById($patientId, $tenantId);
 
         return $this->repository->softDelete(
             $patientId,

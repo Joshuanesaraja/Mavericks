@@ -12,10 +12,16 @@ class CsrfMiddleware
         if (!in_array($method, ['POST', 'PUT', 'DELETE'], true)) {
             return true;
         }
+        if (in_array($method, ['POST', 'PUT'], true)) {
+            $requestToken = $input['csrf_token'] ?? '';
+        }
 
-        $token = $input['csrf_token'] ?? '';
+        if ($method === 'DELETE') {
+            $headers = getallheaders();
+            $requestToken = $headers['X-CSRF-Token'] ?? '';
+        }
 
-        if (!CSRF::validate($token)) {
+        if (!CSRF::validate($requestToken)) {
             Response::error('Invalid CSRF token', 403);
             return false;
         }
