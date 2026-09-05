@@ -91,7 +91,13 @@ class UserRepository
         $pdo = Database::connect();
 
         $sql = "
-            SELECT id, tenant_id, name, email, password_hash, status
+            SELECT
+                id,
+                tenant_id,
+                name,
+                email,
+                password_hash,
+                status
             FROM users
             WHERE email = :email
             LIMIT 1
@@ -286,6 +292,24 @@ class UserRepository
         return $stmt->execute([
             'user_id' => $userId,
             'password_hash' => $passwordHash
+        ]);
+    }
+
+    // Revoke all refresh tokens for a user
+    public static function revokeRefreshTokensByUser(
+        int $userId
+    ): bool {
+        $pdo = Database::connect();
+
+        $stmt = $pdo->prepare("
+            UPDATE refresh_tokens
+            SET revoked = TRUE
+            WHERE user_id = :user_id
+              AND revoked = FALSE
+        ");
+
+        return $stmt->execute([
+            'user_id' => $userId
         ]);
     }
 }

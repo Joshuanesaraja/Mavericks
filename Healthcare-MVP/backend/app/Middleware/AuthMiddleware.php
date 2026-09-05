@@ -1,102 +1,171 @@
 <?php
 
 require_once __DIR__ . '/../Security/JWT.php';
-require_once __DIR__ . '/../Helpers/Response.php';
 require_once __DIR__ . '/../Repositories/UserRepository.php';
+require_once __DIR__ . '/../Repositories/TenantRepository.php';
+require_once __DIR__ . '/../Helpers/Response.php';
 
 class AuthMiddleware
 {
-    /**
-     * Authenticate request via Cookie or Authorization Bearer token header.
-     * Returns decoded JWT object ($decoded->sub, $decoded->tenant_id, $decoded->roles) or null on failure.
-     */
-    public static function handle(): ?object
+    public static function handle(): object
     {
-        $token = $_COOKIE['access_token'] ?? self::getBearerToken();
+        /*
+         * Access token is normally stored in an HttpOnly cookie.
+         * Bearer token is also supported for API testing.
+         */
+        $token = $_COOKIE['access_token'] ?? '';
 
-        if (empty($token)) {
-            Response::error('Authentication required', 401);
-            return null;
+        if ($token === '') {
+            $authorization = $_SERVER['HTTP_AUTHORIZATION'] ?? '';
+
+            if (
+                $authorization !== '' &&
+                preg_match(
+                    '/Bearer\s+(.+)/i',
+                    $authorization,
+                    $matches
+                )
+            ) {
+                $token = trim($matches[1]);
+            }
+        }
+
+        if ($token === '') {
+            Response::error(
+                'Authentication required',
+                401
+            );
+            exit;
         }
 
         try {
-            $decoded = JWT::decode($token);
+            /*
+             * Decode and verify JWT signature.
+             */
+            $payload = JWT::decode($token);
 
-            if (($decoded->type ?? '') !== 'access') {
-                Response::error('Invalid access token', 401);
-                return null;
-            }
+        } catch (Throwable $e) {
 
-            if (!isset($decoded->tenant_id)) {
-                Response::error('Tenant information missing', 401);
-                return null;
-            }
-
-            // Verify that the user still exists
-            // and belongs to the tenant in the token.
-            $user = UserRepository::findById(
-                (int) $decoded->sub,
-                (int) $decoded->tenant_id
+            Response::error(
+                'Invalid or expired access token',
+                401
             );
-
-            if ($user === null) {
-                Response::error('User not found', 401);
-                return null;
-            }
-
-            // Inactive users cannot access protected APIs.
-            if (($user['status'] ?? '') !== 'active') {
-                Response::error('Account is inactive', 403);
-                return null;
-            }
-
-            return $decoded;
-
-            } catch (Throwable $e) {
-                Response::error(
-                    'Invalid or expired access token',
-                    401
-                );
-            return null;
-        }
-    }
-
-    /**
-     * Legacy helper method for backward compatibility.
-     */
-    public static function authenticate(): ?array
-    {
-        $decoded = self::handle();
-        if (!$decoded) {
-            return null;
+            exit;
         }
 
-        return [
-            'userId'   => (int) ($decoded->sub ?? 0),
-            'tenantId' => (int) ($decoded->tenant_id ?? 0),
-            'roles'    => (array) ($decoded->roles ?? [])
-        ];
-    }
-
-    private static function getBearerToken(): string
-    {
-        $authHeader = '';
-        if (isset($_SERVER['HTTP_AUTHORIZATION'])) {
-            $authHeader = trim($_SERVER['HTTP_AUTHORIZATION']);
-        } elseif (isset($_SERVER['REDIRECT_HTTP_AUTHORIZATION'])) {
-            $authHeader = trim($_SERVER['REDIRECT_HTTP_AUTHORIZATION']);
-        } elseif (function_exists('apache_request_headers')) {
-            $headers = apache_request_headers();
-            $headers = array_combine(array_map('ucwords', array_keys($headers)), array_values($headers));
-            if (isset($headers['Authorization'])) {
-                $authHeader = trim($headers['Authorization']);
-            }
+        /*
+         * Only access tokens are allowed here.
+         */
+        if (($payload->type ?? '') !== 'access') {
+            Response::error(
+                'Invalid access token',
+                401
+            );
+            exit;
         }
 
-        if (preg_match('/Bearer\s(\S+)/i', $authHeader, $matches)) {
-            return $matches[1];
+        $userId = (int) ($payload->sub ?? 0);
+        $tenantId = (int) ($payload->tenant_id ?? 0);
+
+        if ($userId <= 0 || $tenantId <= 0) {
+            Response::error(
+                'Invalid authentication claims',
+                401
+            );
+            exit;
         }
 
-        return '';
+        /*
+         * ---------------------------------------------------------
+         * TENANT VALIDATION
+         * ---------------------------------------------------------
+         *
+         * Tenant information is controlled by master_db.
+         *
+         * We MUST validate the tenant before allowing access
+         * to any tenant-owned EHR data.
+         */
+        $tenantRepository = new TenantRepository();
+
+        $tenant = $tenantRepository->findActiveById(
+            $tenantId
+        );
+
+        if (!$tenant) {
+            Response::error(
+                'Tenant is invalid or inactive',
+                403
+            );
+            exit;
+        }
+
+        /*
+         * ---------------------------------------------------------
+         * USER VALIDATION
+         * ---------------------------------------------------------
+         *
+         * User information is stored in ehr_db.
+         *
+         * The tenant_id from the JWT is used together with the
+         * user ID so that a user cannot access another tenant's
+         * account.
+         */
+        $userRepository = new UserRepository();
+
+        $user = $userRepository->findById(
+            $userId,
+            $tenantId
+        );
+
+        if (!$user) {
+            Response::error(
+                'User not found',
+                401
+            );
+            exit;
+        }
+
+        /*
+         * User must still be active.
+         */
+        if (($user['status'] ?? '') !== 'active') {
+            Response::error(
+                'User account is inactive',
+                403
+            );
+            exit;
+        }
+
+        /*
+         * Verify that the user's tenant matches the tenant
+         * represented by the JWT.
+         */
+        if ((int) $user['tenant_id'] !== $tenantId) {
+            Response::error(
+                'Tenant access denied',
+                403
+            );
+            exit;
+        }
+
+        /*
+         * Store useful authenticated-user information in the
+         * decoded JWT object.
+         *
+         * Controllers and RoleMiddleware can use these values.
+         */
+        $payload->user_id = $userId;
+        $payload->tenant_id = $tenantId;
+        $payload->tenant = $tenant;
+        $payload->user = $user;
+
+        /*
+         * Roles are already present in the JWT, but make sure
+         * the authenticated user's current roles are available
+         * from the database as well.
+         */
+        $payload->roles = $user['roles'] ?? [];
+
+        return $payload;
     }
 }

@@ -196,24 +196,60 @@ class UserService
     ): bool {
         $userId = (int) $auth->sub;
 
+        // Get the current password hash.
         $hash = UserRepository::findPasswordHash($userId);
 
-        if (!$hash || !Hash::verify($currentPassword, $hash)) {
-            throw new Exception('Current password is incorrect');
+        if (
+            !$hash ||
+            !Hash::verify($currentPassword, $hash)
+        ) {
+            throw new Exception(
+                'Current password is incorrect'
+            );
         }
 
+        // Validate new password.
         if (strlen($newPassword) < 8) {
             throw new Exception(
                 'New password must be at least 8 characters'
             );
         }
 
+        // Do not allow the same password.
+        if (Hash::verify($newPassword, $hash)) {
+            throw new Exception(
+                'New password must be different from current password'
+            );
+        }
+
+        // Hash the new password.
         $newHash = Hash::make($newPassword);
 
-        return UserRepository::updatePassword(
+        // Update password.
+        $passwordUpdated = UserRepository::updatePassword(
             $userId,
             $newHash
         );
+
+        if (!$passwordUpdated) {
+            throw new Exception(
+                'Password update failed'
+            );
+        }
+
+        /*
+         * Security requirement:
+         *
+         * Revoke every existing refresh token for this user.
+         *
+         * This prevents old authenticated sessions from obtaining
+         * new access tokens after the password has been changed.
+         */
+        UserRepository::revokeRefreshTokensByUser(
+            $userId
+        );
+
+        return true;
     }
 
     // Normalize role names
