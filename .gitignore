@@ -21,3 +21,5 @@ Healthcare-MVP/backend/storage/sessions/*
 # OS files
 .DS_Store
 Thumbs.db
+# Rate limit runtime files
+Healthcare-MVP/backend/storage/rate_limit/*
