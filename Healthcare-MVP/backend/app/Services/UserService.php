@@ -5,7 +5,14 @@ require_once __DIR__ . '/../Security/Hash.php';
 
 class UserService
 {
-    // Get logged-in user's profile
+    private const ROLES = [
+        'Admin',
+        'Provider',
+        'Nurse',
+        'Patient',
+        'Pharmacist'
+    ];
+
     public static function getProfile(object $auth): ?array
     {
         return UserRepository::findById(
@@ -14,7 +21,6 @@ class UserService
         );
     }
 
-    // Get all tenant users
     public static function getUsers(object $auth): array
     {
         return UserRepository::findAllByTenant(
@@ -22,7 +28,6 @@ class UserService
         );
     }
 
-    // Get one user
     public static function getUser(
         object $auth,
         int $userId
@@ -33,7 +38,6 @@ class UserService
         );
     }
 
-    // Create user
     public static function createUser(
         object $auth,
         string $name,
@@ -41,11 +45,7 @@ class UserService
         string $password,
         string $role
     ): array {
-        $existingUser = UserRepository::findByEmail($email);
-
-        if ($existingUser) {
-            throw new Exception('Email already exists');
-        }
+        $tenantId = (int) $auth->tenant_id;
 
         $roleName = self::normalizeRole($role);
 
@@ -53,76 +53,112 @@ class UserService
             throw new Exception('Invalid role');
         }
 
+        $existing = UserRepository::findByEmail($email);
+
+        if ($existing) {
+            throw new Exception('Email already exists');
+        }
+
+        if (strlen($password) < 8) {
+            throw new Exception(
+                'Password must be at least 8 characters'
+            );
+        }
+
         $passwordHash = Hash::make($password);
-
-        $userId = UserRepository::create(
-            (int) $auth->tenant_id,
-            $name,
-            $email,
-            $passwordHash
-        );
-
         $roleId = UserRepository::findRoleIdByName($roleName);
 
         if ($roleId === null) {
             throw new Exception('Role not found');
         }
 
-        UserRepository::assignRole($userId, $roleId);
+        $pdo = Database::connect();
 
-        return UserRepository::findById(
+        try {
+            $pdo->beginTransaction();
+
+            $userId = UserRepository::create(
+                $tenantId,
+                $name,
+                $email,
+                $passwordHash
+            );
+
+            UserRepository::assignRole(
+                $userId,
+                $roleId
+            );
+
+            $pdo->commit();
+        } catch (Throwable $e) {
+            if ($pdo->inTransaction()) {
+                $pdo->rollBack();
+            }
+
+            throw $e;
+        }
+
+        $user = UserRepository::findById(
             $userId,
-            (int) $auth->tenant_id
+            $tenantId
         );
+
+        if (!$user) {
+            throw new Exception('User creation failed');
+        }
+
+        return $user;
     }
 
-    // Update user
     public static function updateUser(
         object $auth,
         int $userId,
         string $name,
         string $email
-    ): ?array {
+    ): array {
+        $tenantId = (int) $auth->tenant_id;
+
         $user = UserRepository::findById(
             $userId,
-            (int) $auth->tenant_id
+            $tenantId
         );
 
         if (!$user) {
             throw new Exception('User not found');
         }
 
-        $existingUser = UserRepository::findByEmail($email);
+        $existing = UserRepository::findByEmail($email);
 
         if (
-            $existingUser &&
-            (int) $existingUser['id'] !== $userId
+            $existing &&
+            (int) $existing['id'] !== $userId
         ) {
             throw new Exception('Email already exists');
         }
 
         UserRepository::update(
             $userId,
-            (int) $auth->tenant_id,
+            $tenantId,
             $name,
             $email
         );
 
         return UserRepository::findById(
             $userId,
-            (int) $auth->tenant_id
+            $tenantId
         );
     }
 
-    // Assign role
     public static function assignRole(
         object $auth,
         int $userId,
         string $role
-    ): ?array {
+    ): array {
+        $tenantId = (int) $auth->tenant_id;
+
         $user = UserRepository::findById(
             $userId,
-            (int) $auth->tenant_id
+            $tenantId
         );
 
         if (!$user) {
@@ -135,41 +171,64 @@ class UserService
             throw new Exception('Invalid role');
         }
 
-        $roleId = UserRepository::findRoleIdByName($roleName);
+        $roleId = UserRepository::findRoleIdByName(
+            $roleName
+        );
 
         if ($roleId === null) {
             throw new Exception('Role not found');
         }
 
-        UserRepository::removeRoles(
-            $userId,
-            (int) $auth->tenant_id
-        );
+        $pdo = Database::connect();
 
-        UserRepository::assignRole(
-            $userId,
-            $roleId
-        );
+        try {
+            $pdo->beginTransaction();
+
+            UserRepository::removeRoles(
+                $userId,
+                $tenantId
+            );
+
+            UserRepository::assignRole(
+                $userId,
+                $roleId
+            );
+
+            $pdo->commit();
+        } catch (Throwable $e) {
+            if ($pdo->inTransaction()) {
+                $pdo->rollBack();
+            }
+
+            throw $e;
+        }
 
         return UserRepository::findById(
             $userId,
-            (int) $auth->tenant_id
+            $tenantId
         );
     }
 
-    // Update status
     public static function updateStatus(
         object $auth,
         int $userId,
         string $status
-    ): ?array {
-        if (!in_array($status, ['active', 'inactive'], true)) {
+    ): array {
+        $tenantId = (int) $auth->tenant_id;
+
+        $status = strtolower(trim($status));
+
+        if (!in_array(
+            $status,
+            ['active', 'inactive'],
+            true
+        )) {
             throw new Exception('Invalid status');
         }
 
         $user = UserRepository::findById(
             $userId,
-            (int) $auth->tenant_id
+            $tenantId
         );
 
         if (!$user) {
@@ -178,26 +237,28 @@ class UserService
 
         UserRepository::updateStatus(
             $userId,
-            (int) $auth->tenant_id,
+            $tenantId,
             $status
         );
 
         return UserRepository::findById(
             $userId,
-            (int) $auth->tenant_id
+            $tenantId
         );
     }
 
-    // Change password
     public static function changePassword(
         object $auth,
         string $currentPassword,
         string $newPassword
     ): bool {
         $userId = (int) $auth->sub;
+        $tenantId = (int) $auth->tenant_id;
 
-        // Get the current password hash.
-        $hash = UserRepository::findPasswordHash($userId);
+        $hash = UserRepository::findPasswordHash(
+            $userId,
+            $tenantId
+        );
 
         if (
             !$hash ||
@@ -208,63 +269,49 @@ class UserService
             );
         }
 
-        // Validate new password.
         if (strlen($newPassword) < 8) {
             throw new Exception(
                 'New password must be at least 8 characters'
             );
         }
 
-        // Do not allow the same password.
         if (Hash::verify($newPassword, $hash)) {
             throw new Exception(
                 'New password must be different from current password'
             );
         }
 
-        // Hash the new password.
         $newHash = Hash::make($newPassword);
 
-        // Update password.
-        $passwordUpdated = UserRepository::updatePassword(
+        if (!UserRepository::updatePassword(
             $userId,
+            $tenantId,
             $newHash
-        );
-
-        if (!$passwordUpdated) {
+        )) {
             throw new Exception(
                 'Password update failed'
             );
         }
 
-        /*
-         * Security requirement:
-         *
-         * Revoke every existing refresh token for this user.
-         *
-         * This prevents old authenticated sessions from obtaining
-         * new access tokens after the password has been changed.
-         */
         UserRepository::revokeRefreshTokensByUser(
-            $userId
+            $userId,
+            $tenantId
         );
 
         return true;
     }
 
-    // Normalize role names
-    private static function normalizeRole(string $role): ?string
-    {
-        $roles = [
-            'admin' => 'Admin',
-            'provider' => 'Provider',
-            'nurse' => 'Nurse',
-            'patient' => 'Patient',
-            'pharmacist' => 'Pharmacist'
-        ];
+    private static function normalizeRole(
+        string $role
+    ): ?string {
+        $role = strtolower(trim($role));
 
-        $key = strtolower(trim($role));
+        foreach (self::ROLES as $allowedRole) {
+            if (strtolower($allowedRole) === $role) {
+                return $allowedRole;
+            }
+        }
 
-        return $roles[$key] ?? null;
+        return null;
     }
 }
