@@ -23,9 +23,13 @@ require_once __DIR__ . '/../Middleware/AuthMiddleware.php';
 require_once __DIR__ . '/../Middleware/RoleMiddleware.php';
 require_once __DIR__ . '/../Middleware/RateLimit.php';
 
+require_once __DIR__ . '/../Controllers/BillingController.php';
+
 use App\Controllers\PatientController;
 use App\Services\PatientService;
 use App\Repositories\PatientRepository;
+
+use App\Controllers\BillingController;
 
 class Router
 {
@@ -476,210 +480,210 @@ class Router
             return;
         }
 
-       // =========================================================
-    // MODULE 3: PATIENT MANAGEMENT
-    // Provider + Nurse
-    // =========================================================
+        // =========================================================
+        // MODULE 3: PATIENT MANAGEMENT
+        // Provider + Nurse
+        // =========================================================
 
-    // GET /patients
-    if ($method === 'GET' && $request === 'patients') {
-        $auth = AuthMiddleware::handle();
+        // GET /patients
+        if ($method === 'GET' && $request === 'patients') {
+            $auth = AuthMiddleware::handle();
 
-        if ($auth === null) {
+            if ($auth === null) {
+                return;
+            }
+
+            if (!RoleMiddleware::handle(
+                $auth,
+                ['Provider', 'Nurse']
+            )) {
+                return;
+            }
+
+            try {
+                $result = self::patientController()->index(
+                    $auth
+                );
+
+                Response::success(
+                    $result,
+                    'Patients retrieved successfully.'
+                );
+            } catch (Throwable $e) {
+                Response::error(
+                    $e->getMessage(),
+                    400
+                );
+            }
+
             return;
         }
 
-        if (!RoleMiddleware::handle(
-            $auth,
-            ['Provider', 'Nurse']
-        )) {
+        // GET /patients/{id}
+        if (
+            $method === 'GET' &&
+            preg_match(
+                '#^patients/([0-9]+)$#',
+                $request,
+                $matches
+            )
+        ) {
+            $auth = AuthMiddleware::handle();
+
+            if ($auth === null) {
+                return;
+            }
+
+            if (!RoleMiddleware::handle(
+                $auth,
+                ['Provider', 'Nurse']
+            )) {
+                return;
+            }
+
+            try {
+                $result = self::patientController()->show(
+                    (int) $matches[1],
+                    $auth
+                );
+
+                Response::success(
+                    $result,
+                    'Patient retrieved successfully.'
+                );
+            } catch (Throwable $e) {
+                Response::error(
+                    $e->getMessage(),
+                    404
+                );
+            }
+
             return;
         }
 
-        try {
-            $result = self::patientController()->index(
-                $auth
-            );
+        // POST /patients
+        if (
+            $method === 'POST' &&
+            $request === 'patients'
+        ) {
+            $auth = AuthMiddleware::handle();
 
-            Response::success(
-                $result,
-                'Patients retrieved successfully.'
-            );
-        } catch (Throwable $e) {
-            Response::error(
-                $e->getMessage(),
-                400
-            );
-        }
+            if ($auth === null) {
+                return;
+            }
 
-        return;
-    }
+            if (!RoleMiddleware::handle(
+                $auth,
+                ['Provider', 'Nurse']
+            )) {
+                return;
+            }
 
-    // GET /patients/{id}
-    if (
-        $method === 'GET' &&
-        preg_match(
-            '#^patients/([0-9]+)$#',
-            $request,
-            $matches
-        )
-    ) {
-        $auth = AuthMiddleware::handle();
+            try {
+                $result = self::patientController()->store(
+                    $decryptedInput,
+                    $auth
+                );
 
-        if ($auth === null) {
+                Response::success(
+                    $result,
+                    'Patient created successfully.',
+                    201
+                );
+            } catch (Throwable $e) {
+                Response::error(
+                    $e->getMessage(),
+                    400
+                );
+            }
+
             return;
         }
 
-        if (!RoleMiddleware::handle(
-            $auth,
-            ['Provider', 'Nurse']
-        )) {
+        // PUT /patients/{id}
+        if (
+            $method === 'PUT' &&
+            preg_match(
+                '#^patients/([0-9]+)$#',
+                $request,
+                $matches
+            )
+        ) {
+            $auth = AuthMiddleware::handle();
+
+            if ($auth === null) {
+                return;
+            }
+
+            if (!RoleMiddleware::handle(
+                $auth,
+                ['Provider', 'Nurse']
+            )) {
+                return;
+            }
+
+            try {
+                $result = self::patientController()->update(
+                    (int) $matches[1],
+                    $decryptedInput,
+                    $auth
+                );
+
+                Response::success(
+                    $result,
+                    'Patient updated successfully.'
+                );
+            } catch (Throwable $e) {
+                Response::error(
+                    $e->getMessage(),
+                    404
+                );
+            }
+
             return;
         }
 
-        try {
-            $result = self::patientController()->show(
-                (int) $matches[1],
-                $auth
-            );
+        // DELETE /patients/{id}
+        if (
+            $method === 'DELETE' &&
+            preg_match(
+                '#^patients/([0-9]+)$#',
+                $request,
+                $matches
+            )
+        ) {
+            $auth = AuthMiddleware::handle();
 
-            Response::success(
-                $result,
-                'Patient retrieved successfully.'
-            );
-        } catch (Throwable $e) {
-            Response::error(
-                $e->getMessage(),
-                404
-            );
-        }
+            if ($auth === null) {
+                return;
+            }
 
-        return;
-    }
+            if (!RoleMiddleware::handle(
+                $auth,
+                ['Provider', 'Nurse']
+            )) {
+                return;
+            }
 
-    // POST /patients
-    if (
-        $method === 'POST' &&
-        $request === 'patients'
-    ) {
-        $auth = AuthMiddleware::handle();
+            try {
+                $result = self::patientController()->destroy(
+                    (int) $matches[1],
+                    $auth
+                );
 
-        if ($auth === null) {
+                Response::success(
+                    $result,
+                    'Patient deleted successfully.'
+                );
+            } catch (Throwable $e) {
+                Response::error(
+                    $e->getMessage(),
+                    404
+                );
+            }
+
             return;
         }
-
-        if (!RoleMiddleware::handle(
-            $auth,
-            ['Provider', 'Nurse']
-        )) {
-            return;
-        }
-
-        try {
-            $result = self::patientController()->store(
-                $decryptedInput,
-                $auth
-            );
-
-            Response::success(
-                $result,
-                'Patient created successfully.',
-                201
-            );
-        } catch (Throwable $e) {
-            Response::error(
-                $e->getMessage(),
-                400
-            );
-        }
-
-        return;
-    }
-
-    // PUT /patients/{id}
-    if (
-        $method === 'PUT' &&
-        preg_match(
-            '#^patients/([0-9]+)$#',
-            $request,
-            $matches
-        )
-    ) {
-        $auth = AuthMiddleware::handle();
-
-        if ($auth === null) {
-            return;
-        }
-
-        if (!RoleMiddleware::handle(
-            $auth,
-            ['Provider', 'Nurse']
-        )) {
-            return;
-        }
-
-        try {
-            $result = self::patientController()->update(
-                (int) $matches[1],
-                $decryptedInput,
-                $auth
-            );
-
-            Response::success(
-                $result,
-                'Patient updated successfully.'
-            );
-        } catch (Throwable $e) {
-            Response::error(
-                $e->getMessage(),
-                404
-            );
-        }
-
-        return;
-    }
-
-    // DELETE /patients/{id}
-    if (
-        $method === 'DELETE' &&
-        preg_match(
-            '#^patients/([0-9]+)$#',
-            $request,
-            $matches
-        )
-    ) {
-        $auth = AuthMiddleware::handle();
-
-        if ($auth === null) {
-            return;
-        }
-
-        if (!RoleMiddleware::handle(
-            $auth,
-            ['Provider', 'Nurse']
-        )) {
-            return;
-        }
-
-        try {
-            $result = self::patientController()->destroy(
-                (int) $matches[1],
-                $auth
-            );
-
-            Response::success(
-                $result,
-                'Patient deleted successfully.'
-            );
-        } catch (Throwable $e) {
-            Response::error(
-                $e->getMessage(),
-                404
-            );
-        }
-
-        return;
-    }
 
         // =========================================================
         // MODULE 4: APPOINTMENTS
@@ -1113,6 +1117,178 @@ class Router
             }
 
             CalendarController::getByRange($auth);
+
+            return;
+        }
+
+        // =========================================================
+        // MODULE 8: BILLING & PAYMENT
+        // =========================================================
+
+        // POST /billing/invoices
+        if (
+            $method === 'POST' &&
+            $request === 'billing/invoices'
+        ) {
+            $auth = AuthMiddleware::handle();
+
+            if ($auth === null) {
+                return;
+            }
+
+            if (!RoleMiddleware::handle($auth, ['Admin', 'Provider'])) {
+                return;
+            }
+
+            BillingController::createInvoice(
+                $auth,
+                $decryptedInput
+            );
+
+            return;
+        }
+
+        // GET /billing/invoices
+        if (
+            $method === 'GET' &&
+            ($request === 'billing/invoices' || $request === 'billing/invoices/list')
+        ) {
+            $auth = AuthMiddleware::handle();
+
+            if ($auth === null) {
+                return;
+            }
+
+            if (!RoleMiddleware::handle($auth, ['Admin', 'Provider', 'Nurse'])) {
+                return;
+            }
+
+            BillingController::getInvoices($auth);
+
+            return;
+        }
+
+        // GET /billing/invoices/{id}
+        if (
+            $method === 'GET' &&
+            preg_match(
+                '#^billing/invoices/([0-9]+)$#',
+                $request,
+                $matches
+            )
+        ) {
+            $auth = AuthMiddleware::handle();
+
+            if ($auth === null) {
+                return;
+            }
+
+            if (!RoleMiddleware::handle($auth, ['Admin', 'Provider', 'Nurse'])) {
+                return;
+            }
+
+            BillingController::getInvoice(
+                $auth,
+                (int) $matches[1]
+            );
+
+            return;
+        }
+
+        // PUT /billing/invoices/{id}/status
+        if (
+            ($method === 'PUT' || $method === 'POST') &&
+            preg_match(
+                '#^billing/invoices/([0-9]+)/status$#',
+                $request,
+                $matches
+            )
+        ) {
+            $auth = AuthMiddleware::handle();
+
+            if ($auth === null) {
+                return;
+            }
+
+            if (!RoleMiddleware::handle($auth, ['Admin'])) {
+                return;
+            }
+
+            BillingController::updateInvoiceStatus(
+                $auth,
+                (int) $matches[1],
+                $decryptedInput
+            );
+
+            return;
+        }
+
+        // POST /billing/payments
+        if (
+            $method === 'POST' &&
+            $request === 'billing/payments'
+        ) {
+            $auth = AuthMiddleware::handle();
+
+            if ($auth === null) {
+                return;
+            }
+
+            if (!RoleMiddleware::handle($auth, ['Admin'])) {
+                return;
+            }
+
+            BillingController::createPayment(
+                $auth,
+                $decryptedInput
+            );
+
+            return;
+        }
+
+        // GET /billing/invoices/{id}/payments
+        if (
+            $method === 'GET' &&
+            preg_match(
+                '#^billing/invoices/([0-9]+)/payments$#',
+                $request,
+                $matches
+            )
+        ) {
+            $auth = AuthMiddleware::handle();
+
+            if ($auth === null) {
+                return;
+            }
+
+            if (!RoleMiddleware::handle($auth, ['Admin', 'Provider', 'Nurse'])) {
+                return;
+            }
+
+            BillingController::getPayments(
+                $auth,
+                (int) $matches[1]
+            );
+
+            return;
+        }
+
+        // GET /billing/summary
+        if (
+            $method === 'GET' &&
+            $request === 'billing/summary'
+        ) {
+            $auth = AuthMiddleware::handle();
+
+            if ($auth === null) {
+                return;
+            }
+
+            if (!RoleMiddleware::handle($auth, ['Admin'])) {
+                return;
+            }
+
+            BillingController::getBillingSummary($auth);
 
             return;
         }
