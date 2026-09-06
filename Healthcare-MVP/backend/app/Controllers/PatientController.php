@@ -9,32 +9,36 @@ class PatientController
 {
     private PatientService $service;
 
-    public function __construct(PatientService $service)
-    {
+    public function __construct(
+        PatientService $service
+    ) {
         $this->service = $service;
     }
 
-    // GET /patients
-    public function index(object $authUser): array
-    {
+    public function index(
+        object $authUser
+    ): array {
         return $this->service->getAll(
             (int) $authUser->tenant_id
         );
     }
 
-    // GET /patients/{id}
-    public function show(int $patientId, object $authUser): array
-    {
+    public function show(
+        int $patientId,
+        object $authUser
+    ): array {
         return $this->service->getById(
             $patientId,
             (int) $authUser->tenant_id
         );
     }
 
-    // POST /patients
-    public function store(array $data, object $authUser): array
-    {
-        $encryptedData = $data['encrypted_data'] ?? null;
+    public function store(
+        array $data,
+        object $authUser
+    ): array {
+        $encryptedData =
+            $data['encrypted_data'] ?? null;
 
         if (
             !is_string($encryptedData) ||
@@ -45,27 +49,25 @@ class PatientController
             );
         }
 
-        $userId = (int) $authUser->sub;
-
         $id = $this->service->create(
             (int) $authUser->tenant_id,
-            $userId,
             $encryptedData
         );
 
         return [
             'id' => $id,
-            'message' => 'Patient created successfully.'
+            'message' =>
+                'Patient created successfully.'
         ];
     }
 
-    // PUT /patients/{id}
     public function update(
         int $patientId,
         array $data,
         object $authUser
     ): array {
-        $encryptedData = $data['encrypted_data'] ?? null;
+        $encryptedData =
+            $data['encrypted_data'] ?? null;
 
         if (
             !is_string($encryptedData) ||
@@ -76,21 +78,18 @@ class PatientController
             );
         }
 
-        $userId = (int) $authUser->sub;
-
         $this->service->update(
             $patientId,
             (int) $authUser->tenant_id,
-            $userId,
             $encryptedData
         );
 
         return [
-            'message' => 'Patient updated successfully.'
+            'message' =>
+                'Patient updated successfully.'
         ];
     }
 
-    // DELETE /patients/{id}
     public function destroy(
         int $patientId,
         object $authUser
@@ -101,7 +100,8 @@ class PatientController
         );
 
         return [
-            'message' => 'Patient deleted successfully.'
+            'message' =>
+                'Patient deleted successfully.'
         ];
     }
 }
