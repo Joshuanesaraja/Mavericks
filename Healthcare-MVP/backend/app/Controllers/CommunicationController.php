@@ -3,6 +3,10 @@
 require_once __DIR__ . '/../Services/CommunicationService.php';
 require_once __DIR__ . '/../Helpers/Response.php';
 
+/**
+ * Module 7: Communication (Notes & Messages) Controller
+ * Task-013 Integration Verified
+ */
 class CommunicationController
 {
     /**

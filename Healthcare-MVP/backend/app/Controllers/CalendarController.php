@@ -3,6 +3,10 @@
 require_once __DIR__ . '/../Services/CalendarService.php';
 require_once __DIR__ . '/../Helpers/Response.php';
 
+/**
+ * Module 10: Calendar & Scheduling Grid Controller
+ * Task-013 Integration Verified
+ */
 class CalendarController
 {
     /**

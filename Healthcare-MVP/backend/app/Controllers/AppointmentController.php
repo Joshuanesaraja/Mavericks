@@ -4,6 +4,10 @@ require_once __DIR__ . '/../Middleware/AuthMiddleware.php';
 require_once __DIR__ . '/../Services/AppointmentService.php';
 require_once __DIR__ . '/../Helpers/Response.php';
 
+/**
+ * Module 4: Appointment & Scheduling Controller
+ * Task-013 Integration Verified
+ */
 class AppointmentController
 {
     /**

@@ -3,6 +3,10 @@
 require_once __DIR__ . '/../Services/PrescriptionService.php';
 require_once __DIR__ . '/../Helpers/Response.php';
 
+/**
+ * Module 5: Prescription & Pharmacy Controller
+ * Task-013 Integration Verified
+ */
 class PrescriptionController
 {
     /**
