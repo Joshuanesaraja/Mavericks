@@ -9,14 +9,14 @@ class PatientService
 {
     private PatientRepository $repository;
 
-    public function __construct(PatientRepository $repository)
-    {
+    public function __construct(
+        PatientRepository $repository
+    ) {
         $this->repository = $repository;
     }
 
     public function create(
         int $tenantId,
-        ?int $userId,
         string $encryptedData
     ): int {
         if (trim($encryptedData) === '') {
@@ -25,16 +25,20 @@ class PatientService
             );
         }
 
+        // Provider/Nurse is not the patient's user account.
         return $this->repository->create(
             $tenantId,
-            $userId,
+            null,
             $encryptedData
         );
     }
 
-    public function getAll(int $tenantId): array
-    {
-        return $this->repository->findAll($tenantId);
+    public function getAll(
+        int $tenantId
+    ): array {
+        return $this->repository->findAll(
+            $tenantId
+        );
     }
 
     public function getById(
@@ -58,7 +62,6 @@ class PatientService
     public function update(
         int $patientId,
         int $tenantId,
-        ?int $userId,
         string $encryptedData
     ): bool {
         if (trim($encryptedData) === '') {
@@ -67,12 +70,14 @@ class PatientService
             );
         }
 
-        $this->getById($patientId, $tenantId);
+        $this->getById(
+            $patientId,
+            $tenantId
+        );
 
         return $this->repository->update(
             $patientId,
             $tenantId,
-            $userId,
             $encryptedData
         );
     }
@@ -81,7 +86,10 @@ class PatientService
         int $patientId,
         int $tenantId
     ): bool {
-        $this->getById($patientId, $tenantId);
+        $this->getById(
+            $patientId,
+            $tenantId
+        );
 
         return $this->repository->softDelete(
             $patientId,
