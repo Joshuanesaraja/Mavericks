@@ -5,61 +5,91 @@ require_once __DIR__ . '/../Helpers/Response.php';
 
 class UserController
 {
-    // Get current profile
     public static function profile(object $auth): void
     {
         try {
             $user = UserService::getProfile($auth);
 
             if (!$user) {
-                Response::error('User not found', 404);
+                Response::error(
+                    'User not found',
+                    404
+                );
                 return;
             }
 
-            Response::success($user, 'Profile fetched successfully');
-        } catch (Exception $e) {
-            Response::error($e->getMessage(), 400);
+            Response::success(
+                $user,
+                'Profile fetched successfully'
+            );
+        } catch (Throwable $e) {
+            Response::error(
+                $e->getMessage(),
+                400
+            );
         }
     }
 
-    // Get all users
     public static function index(object $auth): void
     {
         try {
-            $users = UserService::getUsers($auth);
-
-            Response::success($users, 'Users fetched successfully');
-        } catch (Exception $e) {
-            Response::error($e->getMessage(), 400);
+            Response::success(
+                UserService::getUsers($auth),
+                'Users fetched successfully'
+            );
+        } catch (Throwable $e) {
+            Response::error(
+                $e->getMessage(),
+                400
+            );
         }
     }
 
-    // Get one user
-    public static function show(object $auth, int $userId): void
-    {
+    public static function show(
+        object $auth,
+        int $userId
+    ): void {
         try {
-            $user = UserService::getUser($auth, $userId);
+            $user = UserService::getUser(
+                $auth,
+                $userId
+            );
 
             if (!$user) {
-                Response::error('User not found', 404);
+                Response::error(
+                    'User not found',
+                    404
+                );
                 return;
             }
 
-            Response::success($user, 'User fetched successfully');
-        } catch (Exception $e) {
-            Response::error($e->getMessage(), 400);
+            Response::success(
+                $user,
+                'User fetched successfully'
+            );
+        } catch (Throwable $e) {
+            Response::error(
+                $e->getMessage(),
+                400
+            );
         }
     }
 
-    // Create user
-    public static function store(object $auth, array $input): void
-    {
+    public static function store(
+        object $auth,
+        array $input
+    ): void {
         $name = trim($input['name'] ?? '');
         $email = trim($input['email'] ?? '');
         $password = $input['password'] ?? '';
         $role = trim($input['role'] ?? '');
 
-        if ($name === '' || $email === '' || $password === '' || $role === '') {
+        if (
+            $name === '' ||
+            $email === '' ||
+            $password === '' ||
+            $role === ''
+        ) {
             Response::error(
                 'Name, email, password and role are required',
                 400
@@ -67,8 +97,14 @@ class UserController
             return;
         }
 
-        if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
-            Response::error('Invalid email address', 400);
+        if (!filter_var(
+            $email,
+            FILTER_VALIDATE_EMAIL
+        )) {
+            Response::error(
+                'Invalid email address',
+                400
+            );
             return;
         }
 
@@ -81,13 +117,19 @@ class UserController
                 $role
             );
 
-            Response::success($user, 'User created successfully', 201);
-        } catch (Exception $e) {
-            Response::error($e->getMessage(), 400);
+            Response::success(
+                $user,
+                'User created successfully',
+                201
+            );
+        } catch (Throwable $e) {
+            Response::error(
+                $e->getMessage(),
+                400
+            );
         }
     }
 
-    // Update user
     public static function update(
         object $auth,
         int $userId,
@@ -97,12 +139,21 @@ class UserController
         $email = trim($input['email'] ?? '');
 
         if ($name === '' || $email === '') {
-            Response::error('Name and email are required', 400);
+            Response::error(
+                'Name and email are required',
+                400
+            );
             return;
         }
 
-        if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
-            Response::error('Invalid email address', 400);
+        if (!filter_var(
+            $email,
+            FILTER_VALIDATE_EMAIL
+        )) {
+            Response::error(
+                'Invalid email address',
+                400
+            );
             return;
         }
 
@@ -114,15 +165,20 @@ class UserController
                 $email
             );
 
-            Response::success($user, 'User updated successfully');
-        } catch (Exception $e) {
-            $status = $e->getMessage() === 'User not found' ? 404 : 400;
-
-            Response::error($e->getMessage(), $status);
+            Response::success(
+                $user,
+                'User updated successfully'
+            );
+        } catch (Throwable $e) {
+            Response::error(
+                $e->getMessage(),
+                $e->getMessage() === 'User not found'
+                    ? 404
+                    : 400
+            );
         }
     }
 
-    // Assign role
     public static function assignRole(
         object $auth,
         int $userId,
@@ -131,7 +187,10 @@ class UserController
         $role = trim($input['role'] ?? '');
 
         if ($role === '') {
-            Response::error('Role is required', 400);
+            Response::error(
+                'Role is required',
+                400
+            );
             return;
         }
 
@@ -142,24 +201,34 @@ class UserController
                 $role
             );
 
-            Response::success($user, 'Role assigned successfully');
-        } catch (Exception $e) {
-            $status = $e->getMessage() === 'User not found' ? 404 : 400;
-
-            Response::error($e->getMessage(), $status);
+            Response::success(
+                $user,
+                'Role assigned successfully'
+            );
+        } catch (Throwable $e) {
+            Response::error(
+                $e->getMessage(),
+                $e->getMessage() === 'User not found'
+                    ? 404
+                    : 400
+            );
         }
     }
 
-    // Update status
     public static function updateStatus(
         object $auth,
         int $userId,
         array $input
     ): void {
-        $status = strtolower(trim($input['status'] ?? ''));
+        $status = strtolower(
+            trim($input['status'] ?? '')
+        );
 
         if ($status === '') {
-            Response::error('Status is required', 400);
+            Response::error(
+                'Status is required',
+                400
+            );
             return;
         }
 
@@ -174,22 +243,30 @@ class UserController
                 $user,
                 'User status updated successfully'
             );
-        } catch (Exception $e) {
-            $statusCode = $e->getMessage() === 'User not found' ? 404 : 400;
-
-            Response::error($e->getMessage(), $statusCode);
+        } catch (Throwable $e) {
+            Response::error(
+                $e->getMessage(),
+                $e->getMessage() === 'User not found'
+                    ? 404
+                    : 400
+            );
         }
     }
 
-    // Change own password
     public static function changePassword(
         object $auth,
         array $input
     ): void {
-        $currentPassword = $input['current_password'] ?? '';
-        $newPassword = $input['new_password'] ?? '';
+        $currentPassword =
+            $input['current_password'] ?? '';
 
-        if ($currentPassword === '' || $newPassword === '') {
+        $newPassword =
+            $input['new_password'] ?? '';
+
+        if (
+            $currentPassword === '' ||
+            $newPassword === ''
+        ) {
             Response::error(
                 'Current password and new password are required',
                 400
@@ -204,9 +281,15 @@ class UserController
                 $newPassword
             );
 
-            Response::success(null, 'Password changed successfully');
-        } catch (Exception $e) {
-            Response::error($e->getMessage(), 400);
+            Response::success(
+                null,
+                'Password changed successfully'
+            );
+        } catch (Throwable $e) {
+            Response::error(
+                $e->getMessage(),
+                400
+            );
         }
     }
 }
