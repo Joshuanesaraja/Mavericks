@@ -345,7 +345,7 @@ class AuthController
             );
 
             // Regenerate CSRF token after successful login.
-            CSRF::regenerate();
+            $csrfToken = CSRF::regenerate();
 
             Response::success(
                 [
@@ -355,7 +355,8 @@ class AuthController
                     'tenant_name' => $tenant['name'],
                     'name' => $user['name'],
                     'email' => $user['email'],
-                    'roles' => $roles
+                    'roles' => $roles,
+                    'csrf_token' => $csrfToken
                 ],
                 'Login successful'
             );

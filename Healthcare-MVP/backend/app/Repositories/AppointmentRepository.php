@@ -17,12 +17,12 @@ class AppointmentRepository
     ): bool {
         $db = Database::connect();
 
-        $sql = 'SELECT COUNT(*) FROM appointments
+        $sql = "SELECT COUNT(*) FROM appointments
         WHERE tenant_id = :tenant_id
           AND provider_id = :provider_id
-          AND status NOT IN (''cancelled'', ''completed'')
+          AND status NOT IN ('cancelled', 'completed')
           AND start_at < :end_at
-          AND end_at > :start_at';
+          AND end_at > :start_at";
 
         $params = [
             'tenant_id'   => $tenantId,

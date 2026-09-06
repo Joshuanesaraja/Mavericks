@@ -37,21 +37,26 @@ class PatientController
         array $data,
         object $authUser
     ): array {
-        $encryptedData =
+        $patientData =
             $data['encrypted_data'] ?? null;
 
         if (
-            !is_string($encryptedData) ||
-            trim($encryptedData) === ''
+            !is_string($patientData) ||
+            trim($patientData) === ''
         ) {
             throw new RuntimeException(
                 'encrypted_data is required.'
             );
         }
 
+        /*
+         * PatientService encrypts this data
+         * before storing it in the database.
+         */
         $id = $this->service->create(
             (int) $authUser->tenant_id,
-            $encryptedData
+            (int) $authUser->user_id,
+            $patientData
         );
 
         return [
@@ -66,22 +71,26 @@ class PatientController
         array $data,
         object $authUser
     ): array {
-        $encryptedData =
+        $patientData =
             $data['encrypted_data'] ?? null;
 
         if (
-            !is_string($encryptedData) ||
-            trim($encryptedData) === ''
+            !is_string($patientData) ||
+            trim($patientData) === ''
         ) {
             throw new RuntimeException(
                 'encrypted_data is required.'
             );
         }
 
+        /*
+         * PatientService encrypts the new data
+         * before updating the database.
+         */
         $this->service->update(
             $patientId,
             (int) $authUser->tenant_id,
-            $encryptedData
+            $patientData
         );
 
         return [
