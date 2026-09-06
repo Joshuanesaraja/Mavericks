@@ -18,22 +18,18 @@ class PatientRepository
         ?int $userId,
         string $encryptedData
     ): int {
-        $sql = "
-            INSERT INTO patients
-            (
+        $stmt = $this->db->prepare("
+            INSERT INTO patients (
                 tenant_id,
                 user_id,
                 encrypted_data
             )
-            VALUES
-            (
+            VALUES (
                 :tenant_id,
                 :user_id,
                 :encrypted_data
             )
-        ";
-
-        $stmt = $this->db->prepare($sql);
+        ");
 
         $stmt->execute([
             ':tenant_id' => $tenantId,
@@ -44,9 +40,10 @@ class PatientRepository
         return (int) $this->db->lastInsertId();
     }
 
-    public function findAll(int $tenantId): array
-    {
-        $sql = "
+    public function findAll(
+        int $tenantId
+    ): array {
+        $stmt = $this->db->prepare("
             SELECT
                 id,
                 tenant_id,
@@ -58,22 +55,22 @@ class PatientRepository
             WHERE tenant_id = :tenant_id
               AND deleted_at IS NULL
             ORDER BY id DESC
-        ";
-
-        $stmt = $this->db->prepare($sql);
+        ");
 
         $stmt->execute([
             ':tenant_id' => $tenantId
         ]);
 
-        return $stmt->fetchAll(PDO::FETCH_ASSOC);
+        return $stmt->fetchAll(
+            PDO::FETCH_ASSOC
+        );
     }
 
     public function findById(
         int $patientId,
         int $tenantId
     ): ?array {
-        $sql = "
+        $stmt = $this->db->prepare("
             SELECT
                 id,
                 tenant_id,
@@ -86,16 +83,16 @@ class PatientRepository
               AND tenant_id = :tenant_id
               AND deleted_at IS NULL
             LIMIT 1
-        ";
-
-        $stmt = $this->db->prepare($sql);
+        ");
 
         $stmt->execute([
             ':patient_id' => $patientId,
             ':tenant_id' => $tenantId
         ]);
 
-        $patient = $stmt->fetch(PDO::FETCH_ASSOC);
+        $patient = $stmt->fetch(
+            PDO::FETCH_ASSOC
+        );
 
         return $patient ?: null;
     }
@@ -103,47 +100,44 @@ class PatientRepository
     public function update(
         int $patientId,
         int $tenantId,
-        ?int $userId,
         string $encryptedData
     ): bool {
-        $sql = "
+        $stmt = $this->db->prepare("
             UPDATE patients
             SET
-                user_id = :user_id,
                 encrypted_data = :encrypted_data,
                 updated_at = CURRENT_TIMESTAMP
             WHERE id = :patient_id
               AND tenant_id = :tenant_id
               AND deleted_at IS NULL
-        ";
+        ");
 
-        $stmt = $this->db->prepare($sql);
-
-        return $stmt->execute([
-            ':user_id' => $userId,
+        $stmt->execute([
             ':encrypted_data' => $encryptedData,
             ':patient_id' => $patientId,
             ':tenant_id' => $tenantId
         ]);
+
+        return $stmt->rowCount() > 0;
     }
 
     public function softDelete(
         int $patientId,
         int $tenantId
     ): bool {
-        $sql = "
+        $stmt = $this->db->prepare("
             UPDATE patients
             SET deleted_at = CURRENT_TIMESTAMP
             WHERE id = :patient_id
               AND tenant_id = :tenant_id
               AND deleted_at IS NULL
-        ";
+        ");
 
-        $stmt = $this->db->prepare($sql);
-
-        return $stmt->execute([
+        $stmt->execute([
             ':patient_id' => $patientId,
             ':tenant_id' => $tenantId
         ]);
+
+        return $stmt->rowCount() > 0;
     }
 }
