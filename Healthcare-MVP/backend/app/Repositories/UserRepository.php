@@ -4,363 +4,377 @@ require_once __DIR__ . '/../Config/database.php';
 
 class UserRepository
 {
-    public static function findById(
-        int $userId,
-        int $tenantId
-    ): ?array {
-        $pdo = Database::connect();
+    /**
+     * Get a connection to the authenticated tenant's database.
+     */
+    private static function db(object $auth): PDO
+    {
+        if (
+            empty($auth->tenant_db_name) ||
+            empty($auth->tenant_db_user) ||
+            empty($auth->tenant_db_password)
+        ) {
+            throw new RuntimeException(
+                'Tenant database credentials are missing.'
+            );
+        }
 
-        $stmt = $pdo->prepare("
-            SELECT
-                u.id,
-                u.tenant_id,
-                u.name,
-                u.email,
-                u.status,
-                u.created_at,
-                u.updated_at,
-                GROUP_CONCAT(
-                    r.name
-                    ORDER BY r.name
-                    SEPARATOR ','
-                ) AS roles
-            FROM users u
-            LEFT JOIN user_roles ur
-                ON u.id = ur.user_id
-            LEFT JOIN roles r
-                ON ur.role_id = r.id
-            WHERE u.id = :user_id
-              AND u.tenant_id = :tenant_id
-            GROUP BY
-                u.id,
-                u.tenant_id,
-                u.name,
-                u.email,
-                u.status,
-                u.created_at,
-                u.updated_at
-            LIMIT 1
-        ");
+        return Database::tenant(
+            (string) $auth->tenant_db_name,
+            (string) $auth->tenant_db_user,
+            (string) $auth->tenant_db_password
+        );
+    }
+
+    /**
+     * Find a user by ID.
+     */
+    public static function findById(
+        object $auth,
+        int $userId
+    ): ?array {
+        $db = self::db($auth);
+
+        $stmt = $db->prepare(
+            'SELECT
+                id,
+                name,
+                email,
+                status,
+                created_at,
+                updated_at
+             FROM users
+             WHERE id = :id
+             LIMIT 1'
+        );
 
         $stmt->execute([
-            'user_id' => $userId,
-            'tenant_id' => $tenantId
+            ':id' => $userId
         ]);
 
-        $user = $stmt->fetch(PDO::FETCH_ASSOC);
+        $user = $stmt->fetch();
 
         if (!$user) {
             return null;
         }
 
-        $user['roles'] = $user['roles']
-            ? explode(',', $user['roles'])
-            : [];
+        $user['roles'] = self::getRoles($auth, $userId);
 
         return $user;
     }
 
-    public static function findAllByTenant(
-        int $tenantId
-    ): array {
-        $pdo = Database::connect();
+    /**
+     * Get all users in the current tenant.
+     */
+    public static function findAll(object $auth): array
+    {
+        $db = self::db($auth);
 
-        $stmt = $pdo->prepare("
-            SELECT
-                u.id,
-                u.tenant_id,
-                u.name,
-                u.email,
-                u.status,
-                u.created_at,
-                u.updated_at,
-                GROUP_CONCAT(
-                    r.name
-                    ORDER BY r.name
-                    SEPARATOR ','
-                ) AS roles
-            FROM users u
-            LEFT JOIN user_roles ur
-                ON u.id = ur.user_id
-            LEFT JOIN roles r
-                ON ur.role_id = r.id
-            WHERE u.tenant_id = :tenant_id
-            GROUP BY
-                u.id,
-                u.tenant_id,
-                u.name,
-                u.email,
-                u.status,
-                u.created_at,
-                u.updated_at
-            ORDER BY u.id DESC
-        ");
+        $stmt = $db->query(
+            'SELECT
+                id,
+                name,
+                email,
+                status,
+                created_at,
+                updated_at
+             FROM users
+             ORDER BY id DESC'
+        );
 
-        $stmt->execute([
-            'tenant_id' => $tenantId
-        ]);
-
-        $users = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        $users = $stmt->fetchAll();
 
         foreach ($users as &$user) {
-            $user['roles'] = $user['roles']
-                ? explode(',', $user['roles'])
-                : [];
+            $user['roles'] = self::getRoles(
+                $auth,
+                (int) $user['id']
+            );
         }
-
-        unset($user);
 
         return $users;
     }
 
+    /**
+     * Find a user by email.
+     */
     public static function findByEmail(
+        object $auth,
         string $email
     ): ?array {
-        $pdo = Database::connect();
+        $db = self::db($auth);
 
-        $stmt = $pdo->prepare("
-            SELECT
+        $stmt = $db->prepare(
+            'SELECT
                 id,
-                tenant_id,
                 name,
                 email,
                 password_hash,
-                status
-            FROM users
-            WHERE email = :email
-            LIMIT 1
-        ");
+                status,
+                created_at,
+                updated_at
+             FROM users
+             WHERE email = :email
+             LIMIT 1'
+        );
 
         $stmt->execute([
-            'email' => $email
+            ':email' => $email
         ]);
 
-        $user = $stmt->fetch(PDO::FETCH_ASSOC);
+        $user = $stmt->fetch();
 
-        return $user ?: null;
+        if (!$user) {
+            return null;
+        }
+
+        $user['roles'] = self::getRoles(
+            $auth,
+            (int) $user['id']
+        );
+
+        return $user;
     }
 
+    /**
+     * Get only the password hash of a user.
+     */
     public static function findPasswordHash(
-        int $userId,
-        int $tenantId
+        object $auth,
+        int $userId
     ): ?string {
-        $pdo = Database::connect();
+        $db = self::db($auth);
 
-        $stmt = $pdo->prepare("
-            SELECT password_hash
-            FROM users
-            WHERE id = :user_id
-              AND tenant_id = :tenant_id
-            LIMIT 1
-        ");
+        $stmt = $db->prepare(
+            'SELECT password_hash
+             FROM users
+             WHERE id = :id
+             LIMIT 1'
+        );
 
         $stmt->execute([
-            'user_id' => $userId,
-            'tenant_id' => $tenantId
+            ':id' => $userId
         ]);
 
-        $hash = $stmt->fetchColumn();
+        $result = $stmt->fetch();
 
-        return $hash ?: null;
+        return $result
+            ? $result['password_hash']
+            : null;
     }
 
+    /**
+     * Create a user inside the current tenant database.
+     */
     public static function create(
-        int $tenantId,
+        object $auth,
         string $name,
         string $email,
         string $passwordHash
     ): int {
-        $pdo = Database::connect();
+        $db = self::db($auth);
 
-        $stmt = $pdo->prepare("
-            INSERT INTO users (
-                tenant_id,
-                name,
-                email,
-                password_hash,
-                status
-            )
-            VALUES (
-                :tenant_id,
-                :name,
-                :email,
-                :password_hash,
-                'active'
-            )
-        ");
+        $stmt = $db->prepare(
+            'INSERT INTO users
+                (name, email, password_hash, status)
+             VALUES
+                (:name, :email, :password_hash, :status)'
+        );
 
         $stmt->execute([
-            'tenant_id' => $tenantId,
-            'name' => $name,
-            'email' => $email,
-            'password_hash' => $passwordHash
+            ':name' => $name,
+            ':email' => $email,
+            ':password_hash' => $passwordHash,
+            ':status' => 'active'
         ]);
 
-        return (int) $pdo->lastInsertId();
+        return (int) $db->lastInsertId();
     }
 
+    /**
+     * Update user profile information.
+     */
     public static function update(
+        object $auth,
         int $userId,
-        int $tenantId,
         string $name,
         string $email
     ): bool {
-        $pdo = Database::connect();
+        $db = self::db($auth);
 
-        $stmt = $pdo->prepare("
-            UPDATE users
-            SET
+        $stmt = $db->prepare(
+            'UPDATE users
+             SET
                 name = :name,
-                email = :email,
-                updated_at = CURRENT_TIMESTAMP
-            WHERE id = :user_id
-              AND tenant_id = :tenant_id
-        ");
+                email = :email
+             WHERE id = :id'
+        );
 
-        $stmt->execute([
-            'user_id' => $userId,
-            'tenant_id' => $tenantId,
-            'name' => $name,
-            'email' => $email
+        return $stmt->execute([
+            ':name' => $name,
+            ':email' => $email,
+            ':id' => $userId
         ]);
-
-        return $stmt->rowCount() > 0;
     }
 
+    /**
+     * Update user account status.
+     */
     public static function updateStatus(
+        object $auth,
         int $userId,
-        int $tenantId,
         string $status
     ): bool {
-        $pdo = Database::connect();
+        $db = self::db($auth);
 
-        $stmt = $pdo->prepare("
-            UPDATE users
-            SET
-                status = :status,
-                updated_at = CURRENT_TIMESTAMP
-            WHERE id = :user_id
-              AND tenant_id = :tenant_id
-        ");
+        $stmt = $db->prepare(
+            'UPDATE users
+             SET status = :status
+             WHERE id = :id'
+        );
 
-        $stmt->execute([
-            'user_id' => $userId,
-            'tenant_id' => $tenantId,
-            'status' => $status
+        return $stmt->execute([
+            ':status' => $status,
+            ':id' => $userId
         ]);
-
-        return $stmt->rowCount() > 0;
     }
 
+    /**
+     * Find a role ID by role name.
+     */
     public static function findRoleIdByName(
+        object $auth,
         string $roleName
     ): ?int {
-        $pdo = Database::connect();
+        $db = self::db($auth);
 
-        $stmt = $pdo->prepare("
-            SELECT id
-            FROM roles
-            WHERE name = :name
-            LIMIT 1
-        ");
+        $stmt = $db->prepare(
+            'SELECT id
+             FROM roles
+             WHERE name = :name
+             LIMIT 1'
+        );
 
         $stmt->execute([
-            'name' => $roleName
+            ':name' => $roleName
         ]);
 
-        $roleId = $stmt->fetchColumn();
+        $result = $stmt->fetch();
 
-        return $roleId !== false
-            ? (int) $roleId
+        return $result
+            ? (int) $result['id']
             : null;
     }
 
+    /**
+     * Assign a role to a user.
+     */
     public static function assignRole(
+        object $auth,
         int $userId,
         int $roleId
     ): bool {
-        $pdo = Database::connect();
+        $db = self::db($auth);
 
-        $stmt = $pdo->prepare("
-            INSERT INTO user_roles (
-                user_id,
-                role_id
-            )
-            VALUES (
-                :user_id,
-                :role_id
-            )
-        ");
+        $stmt = $db->prepare(
+            'INSERT INTO user_roles
+                (user_id, role_id)
+             VALUES
+                (:user_id, :role_id)'
+        );
 
         return $stmt->execute([
-            'user_id' => $userId,
-            'role_id' => $roleId
+            ':user_id' => $userId,
+            ':role_id' => $roleId
         ]);
     }
 
+    /**
+     * Remove all roles assigned to a user.
+     */
     public static function removeRoles(
-        int $userId,
-        int $tenantId
+        object $auth,
+        int $userId
     ): bool {
-        $pdo = Database::connect();
+        $db = self::db($auth);
 
-        $stmt = $pdo->prepare("
-            DELETE ur
-            FROM user_roles ur
-            INNER JOIN users u
-                ON u.id = ur.user_id
-            WHERE ur.user_id = :user_id
-              AND u.tenant_id = :tenant_id
-        ");
+        $stmt = $db->prepare(
+            'DELETE FROM user_roles
+             WHERE user_id = :user_id'
+        );
 
         return $stmt->execute([
-            'user_id' => $userId,
-            'tenant_id' => $tenantId
+            ':user_id' => $userId
         ]);
     }
 
-    public static function updatePassword(
-        int $userId,
-        int $tenantId,
-        string $passwordHash
-    ): bool {
-        $pdo = Database::connect();
+    /**
+     * Get all roles assigned to a user.
+     */
+    public static function getRoles(
+        object $auth,
+        int $userId
+    ): array {
+        $db = self::db($auth);
 
-        $stmt = $pdo->prepare("
-            UPDATE users
-            SET
-                password_hash = :password_hash,
-                updated_at = CURRENT_TIMESTAMP
-            WHERE id = :user_id
-              AND tenant_id = :tenant_id
-        ");
+        $stmt = $db->prepare(
+            'SELECT r.name
+             FROM roles r
+             INNER JOIN user_roles ur
+                ON ur.role_id = r.id
+             WHERE ur.user_id = :user_id
+             ORDER BY r.name'
+        );
 
         $stmt->execute([
-            'user_id' => $userId,
-            'tenant_id' => $tenantId,
-            'password_hash' => $passwordHash
+            ':user_id' => $userId
         ]);
 
-        return $stmt->rowCount() > 0;
+        return array_column(
+            $stmt->fetchAll(),
+            'name'
+        );
     }
 
-    public static function revokeRefreshTokensByUser(
+    /**
+     * Update a user's password.
+     */
+    public static function updatePassword(
+        object $auth,
         int $userId,
-        int $tenantId
+        string $passwordHash
     ): bool {
-        $pdo = Database::connect();
+        $db = self::db($auth);
 
-        $stmt = $pdo->prepare("
-            UPDATE refresh_tokens
-            SET revoked = TRUE
-            WHERE user_id = :user_id
-              AND tenant_id = :tenant_id
-              AND revoked = FALSE
-        ");
+        $stmt = $db->prepare(
+            'UPDATE users
+             SET password_hash = :password_hash
+             WHERE id = :id'
+        );
 
         return $stmt->execute([
-            'user_id' => $userId,
-            'tenant_id' => $tenantId
+            ':password_hash' => $passwordHash,
+            ':id' => $userId
+        ]);
+    }
+
+    /**
+     * Revoke all refresh tokens for a user.
+     */
+    public static function revokeRefreshTokensByUser(
+        object $auth,
+        int $userId
+    ): bool {
+        $db = self::db($auth);
+
+        $stmt = $db->prepare(
+            'UPDATE refresh_tokens
+         SET revoked = TRUE
+         WHERE user_id = :user_id
+           AND revoked = FALSE'
+        );
+
+        return $stmt->execute([
+            ':user_id' => $userId
         ]);
     }
 }

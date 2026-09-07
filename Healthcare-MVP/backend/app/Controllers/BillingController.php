@@ -8,20 +8,47 @@ use Exception;
 
 class BillingController
 {
+    /**
+     * Get a BillingService connected to the current tenant database.
+     */
+    private static function service(object $auth): BillingService
+    {
+        if (
+            empty($auth->tenant_db_name) ||
+            empty($auth->tenant_db_user) ||
+            empty($auth->tenant_db_password)
+        ) {
+            throw new Exception(
+                'Tenant database configuration is missing.'
+            );
+        }
+
+        $db = \Database::tenant(
+            $auth->tenant_db_name,
+            $auth->tenant_db_user,
+            $auth->tenant_db_password
+        );
+
+        return new BillingService(
+            new BillingRepository($db)
+        );
+    }
+
     // Create a new invoice for a patient.
     public static function createInvoice(
         object $auth,
         array $input
     ): void {
         try {
-            $tenantId = (int) ($auth->tenant_id ?? 0);
             $patientId = (int) ($input['patient_id'] ?? 0);
+
             $appointmentId = isset($input['appointment_id'])
                 ? (int) $input['appointment_id']
                 : null;
+
             $amount = (float) ($input['amount'] ?? 0);
 
-            if ($tenantId <= 0 || $patientId <= 0 || $amount <= 0) {
+            if ($patientId <= 0 || $amount <= 0) {
                 \Response::error(
                     'Invalid invoice data.',
                     400
@@ -29,22 +56,16 @@ class BillingController
                 return;
             }
 
-            $service = new BillingService(
-                new BillingRepository(
-                    \Database::connect()
-                )
-            );
+            $service = self::service($auth);
 
             $invoiceId = $service->createInvoice(
-                $tenantId,
                 $patientId,
                 $appointmentId,
                 $amount
             );
 
             $invoice = $service->getInvoice(
-                $invoiceId,
-                $tenantId
+                $invoiceId
             );
 
             \Response::success(
@@ -66,17 +87,10 @@ class BillingController
         int $invoiceId
     ): void {
         try {
-            $tenantId = (int) ($auth->tenant_id ?? 0);
-
-            $service = new BillingService(
-                new BillingRepository(
-                    \Database::connect()
-                )
-            );
+            $service = self::service($auth);
 
             $invoice = $service->getInvoice(
-                $invoiceId,
-                $tenantId
+                $invoiceId
             );
 
             \Response::success(
@@ -96,17 +110,9 @@ class BillingController
         object $auth
     ): void {
         try {
-            $tenantId = (int) ($auth->tenant_id ?? 0);
+            $service = self::service($auth);
 
-            $service = new BillingService(
-                new BillingRepository(
-                    \Database::connect()
-                )
-            );
-
-            $invoices = $service->getInvoices(
-                $tenantId
-            );
+            $invoices = $service->getInvoices();
 
             \Response::success(
                 $invoices,
@@ -127,8 +133,9 @@ class BillingController
         array $input
     ): void {
         try {
-            $tenantId = (int) ($auth->tenant_id ?? 0);
-            $status = trim((string) ($input['status'] ?? ''));
+            $status = trim(
+                (string) ($input['status'] ?? '')
+            );
 
             if ($status === '') {
                 \Response::error(
@@ -138,21 +145,15 @@ class BillingController
                 return;
             }
 
-            $service = new BillingService(
-                new BillingRepository(
-                    \Database::connect()
-                )
-            );
+            $service = self::service($auth);
 
             $service->updateInvoiceStatus(
                 $invoiceId,
-                $tenantId,
                 $status
             );
 
             $invoice = $service->getInvoice(
-                $invoiceId,
-                $tenantId
+                $invoiceId
             );
 
             \Response::success(
@@ -173,11 +174,10 @@ class BillingController
         array $input
     ): void {
         try {
-            $tenantId = (int) ($auth->tenant_id ?? 0);
             $invoiceId = (int) ($input['invoice_id'] ?? 0);
             $amount = (float) ($input['amount'] ?? 0);
 
-            if ($tenantId <= 0 || $invoiceId <= 0 || $amount <= 0) {
+            if ($invoiceId <= 0 || $amount <= 0) {
                 \Response::error(
                     'Invalid payment data.',
                     400
@@ -185,14 +185,9 @@ class BillingController
                 return;
             }
 
-            $service = new BillingService(
-                new BillingRepository(
-                    \Database::connect()
-                )
-            );
+            $service = self::service($auth);
 
             $paymentId = $service->createPayment(
-                $tenantId,
                 $invoiceId,
                 $amount
             );
@@ -218,17 +213,10 @@ class BillingController
         int $invoiceId
     ): void {
         try {
-            $tenantId = (int) ($auth->tenant_id ?? 0);
-
-            $service = new BillingService(
-                new BillingRepository(
-                    \Database::connect()
-                )
-            );
+            $service = self::service($auth);
 
             $payments = $service->getPayments(
-                $invoiceId,
-                $tenantId
+                $invoiceId
             );
 
             \Response::success(
@@ -248,17 +236,9 @@ class BillingController
         object $auth
     ): void {
         try {
-            $tenantId = (int) ($auth->tenant_id ?? 0);
+            $service = self::service($auth);
 
-            $service = new BillingService(
-                new BillingRepository(
-                    \Database::connect()
-                )
-            );
-
-            $summary = $service->getBillingSummary(
-                $tenantId
-            );
+            $summary = $service->getBillingSummary();
 
             \Response::success(
                 $summary,

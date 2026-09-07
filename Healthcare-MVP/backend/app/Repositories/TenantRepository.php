@@ -8,24 +8,40 @@ class TenantRepository
 
     public function __construct()
     {
+        // Tenant information is stored in the Master DB.
         $this->db = Database::master();
     }
 
     /**
      * Find an active tenant by ID.
+     *
+     * Used after JWT authentication to identify
+     * which tenant database the user belongs to.
      */
     public function findActiveById(int $tenantId): ?array
     {
         $stmt = $this->db->prepare(
-            "SELECT id, tenant_code, name, status
+            'SELECT
+                id,
+                name,
+                subdomain,
+                status,
+                trial_end,
+                subscription_status,
+                db_name,
+                db_host,
+                db_user,
+                db_password,
+                created_at
              FROM tenants
              WHERE id = :id
-             AND status = 'active'
-             LIMIT 1"
+               AND status = :status
+             LIMIT 1'
         );
 
         $stmt->execute([
-            'id' => $tenantId
+            ':id' => $tenantId,
+            ':status' => 'active'
         ]);
 
         $tenant = $stmt->fetch();
@@ -34,20 +50,35 @@ class TenantRepository
     }
 
     /**
-     * Find an active tenant by tenant code.
+     * Find an active tenant by subdomain.
+     *
+     * Used during tenant resolution from the
+     * hospital subdomain.
      */
-    public function findActiveByCode(string $tenantCode): ?array
+    public function findActiveBySubdomain(string $subdomain): ?array
     {
         $stmt = $this->db->prepare(
-            "SELECT id, tenant_code, name, status
+            'SELECT
+                id,
+                name,
+                subdomain,
+                status,
+                trial_end,
+                subscription_status,
+                db_name,
+                db_host,
+                db_user,
+                db_password,
+                created_at
              FROM tenants
-             WHERE tenant_code = :tenant_code
-             AND status = 'active'
-             LIMIT 1"
+             WHERE subdomain = :subdomain
+               AND status = :status
+             LIMIT 1'
         );
 
         $stmt->execute([
-            'tenant_code' => $tenantCode
+            ':subdomain' => $subdomain,
+            ':status' => 'active'
         ]);
 
         $tenant = $stmt->fetch();

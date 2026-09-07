@@ -13,42 +13,37 @@ class BillingRepository
         $this->db = $db;
     }
 
-    // Check whether a patient belongs to the current tenant.
+    // Check whether a patient exists in the current tenant database.
     public function patientBelongsToTenant(
-        int $patientId,
-        int $tenantId
+        int $patientId
     ): bool {
         $sql = "
             SELECT id
             FROM patients
             WHERE id = :patient_id
-              AND tenant_id = :tenant_id
-              AND deleted_at IS NULL
             LIMIT 1
         ";
 
         $stmt = $this->db->prepare($sql);
 
         $stmt->execute([
-            ':patient_id' => $patientId,
-            ':tenant_id' => $tenantId
+            ':patient_id' => $patientId
         ]);
 
         return $stmt->fetch() !== false;
     }
 
-    // Check whether an appointment belongs to the current tenant and patient.
+    // Check whether an appointment belongs to the selected patient
+    // in the current tenant database.
     public function appointmentBelongsToTenant(
         int $appointmentId,
-        int $patientId,
-        int $tenantId
+        int $patientId
     ): bool {
         $sql = "
             SELECT id
             FROM appointments
             WHERE id = :appointment_id
               AND patient_id = :patient_id
-              AND tenant_id = :tenant_id
             LIMIT 1
         ";
 
@@ -56,8 +51,7 @@ class BillingRepository
 
         $stmt->execute([
             ':appointment_id' => $appointmentId,
-            ':patient_id' => $patientId,
-            ':tenant_id' => $tenantId
+            ':patient_id' => $patientId
         ]);
 
         return $stmt->fetch() !== false;
@@ -65,7 +59,6 @@ class BillingRepository
 
     // Create a new invoice.
     public function createInvoice(
-        int $tenantId,
         int $patientId,
         ?int $appointmentId,
         string $invoiceNumber,
@@ -75,7 +68,6 @@ class BillingRepository
         $sql = "
             INSERT INTO invoices
             (
-                tenant_id,
                 patient_id,
                 appointment_id,
                 invoice_number,
@@ -84,7 +76,6 @@ class BillingRepository
             )
             VALUES
             (
-                :tenant_id,
                 :patient_id,
                 :appointment_id,
                 :invoice_number,
@@ -96,7 +87,6 @@ class BillingRepository
         $stmt = $this->db->prepare($sql);
 
         $stmt->execute([
-            ':tenant_id' => $tenantId,
             ':patient_id' => $patientId,
             ':appointment_id' => $appointmentId,
             ':invoice_number' => $invoiceNumber,
@@ -107,15 +97,13 @@ class BillingRepository
         return (int) $this->db->lastInsertId();
     }
 
-    // Retrieve a single invoice belonging to a tenant.
+    // Retrieve a single invoice.
     public function findInvoiceById(
-        int $invoiceId,
-        int $tenantId
+        int $invoiceId
     ): ?array {
         $sql = "
             SELECT
                 id,
-                tenant_id,
                 patient_id,
                 appointment_id,
                 invoice_number,
@@ -125,15 +113,13 @@ class BillingRepository
                 updated_at
             FROM invoices
             WHERE id = :invoice_id
-              AND tenant_id = :tenant_id
             LIMIT 1
         ";
 
         $stmt = $this->db->prepare($sql);
 
         $stmt->execute([
-            ':invoice_id' => $invoiceId,
-            ':tenant_id' => $tenantId
+            ':invoice_id' => $invoiceId
         ]);
 
         $invoice = $stmt->fetch();
@@ -141,14 +127,12 @@ class BillingRepository
         return $invoice ?: null;
     }
 
-    // Retrieve all invoices belonging to a tenant.
-    public function findAllInvoices(
-        int $tenantId
-    ): array {
+    // Retrieve all invoices for the current tenant.
+    public function findAllInvoices(): array
+    {
         $sql = "
             SELECT
                 id,
-                tenant_id,
                 patient_id,
                 appointment_id,
                 invoice_number,
@@ -157,15 +141,12 @@ class BillingRepository
                 created_at,
                 updated_at
             FROM invoices
-            WHERE tenant_id = :tenant_id
             ORDER BY created_at DESC
         ";
 
         $stmt = $this->db->prepare($sql);
 
-        $stmt->execute([
-            ':tenant_id' => $tenantId
-        ]);
+        $stmt->execute();
 
         return $stmt->fetchAll();
     }
@@ -173,22 +154,19 @@ class BillingRepository
     // Update the status of an invoice.
     public function updateInvoiceStatus(
         int $invoiceId,
-        int $tenantId,
         string $status
     ): bool {
         $sql = "
             UPDATE invoices
             SET status = :status
             WHERE id = :invoice_id
-              AND tenant_id = :tenant_id
         ";
 
         $stmt = $this->db->prepare($sql);
 
         $stmt->execute([
             ':status' => $status,
-            ':invoice_id' => $invoiceId,
-            ':tenant_id' => $tenantId
+            ':invoice_id' => $invoiceId
         ]);
 
         return $stmt->rowCount() > 0;
@@ -196,23 +174,20 @@ class BillingRepository
 
     // Calculate the total amount already paid for an invoice.
     public function getPaidAmount(
-        int $invoiceId,
-        int $tenantId
+        int $invoiceId
     ): float {
         $sql = "
             SELECT
                 COALESCE(SUM(amount), 0) AS paid_amount
             FROM payments
             WHERE invoice_id = :invoice_id
-              AND tenant_id = :tenant_id
               AND status = 'paid'
         ";
 
         $stmt = $this->db->prepare($sql);
 
         $stmt->execute([
-            ':invoice_id' => $invoiceId,
-            ':tenant_id' => $tenantId
+            ':invoice_id' => $invoiceId
         ]);
 
         return (float) $stmt->fetchColumn();
@@ -220,7 +195,6 @@ class BillingRepository
 
     // Create a new payment.
     public function createPayment(
-        int $tenantId,
         int $invoiceId,
         float $amount,
         string $status,
@@ -229,7 +203,6 @@ class BillingRepository
         $sql = "
             INSERT INTO payments
             (
-                tenant_id,
                 invoice_id,
                 amount,
                 status,
@@ -237,7 +210,6 @@ class BillingRepository
             )
             VALUES
             (
-                :tenant_id,
                 :invoice_id,
                 :amount,
                 :status,
@@ -248,7 +220,6 @@ class BillingRepository
         $stmt = $this->db->prepare($sql);
 
         $stmt->execute([
-            ':tenant_id' => $tenantId,
             ':invoice_id' => $invoiceId,
             ':amount' => $amount,
             ':status' => $status,
@@ -260,13 +231,11 @@ class BillingRepository
 
     // Retrieve all payments for an invoice.
     public function findPaymentsByInvoice(
-        int $invoiceId,
-        int $tenantId
+        int $invoiceId
     ): array {
         $sql = "
             SELECT
                 id,
-                tenant_id,
                 invoice_id,
                 amount,
                 status,
@@ -274,37 +243,31 @@ class BillingRepository
                 created_at
             FROM payments
             WHERE invoice_id = :invoice_id
-              AND tenant_id = :tenant_id
             ORDER BY created_at DESC
         ";
 
         $stmt = $this->db->prepare($sql);
 
         $stmt->execute([
-            ':invoice_id' => $invoiceId,
-            ':tenant_id' => $tenantId
+            ':invoice_id' => $invoiceId
         ]);
 
         return $stmt->fetchAll();
     }
 
-    // Retrieve billing totals for a tenant.
-    public function getBillingSummary(
-        int $tenantId
-    ): array {
+    // Retrieve billing totals for the current tenant.
+    public function getBillingSummary(): array
+    {
         $sql = "
             SELECT
                 COUNT(*) AS total_invoices,
                 COALESCE(SUM(amount), 0) AS total_amount
             FROM invoices
-            WHERE tenant_id = :tenant_id
         ";
 
         $stmt = $this->db->prepare($sql);
 
-        $stmt->execute([
-            ':tenant_id' => $tenantId
-        ]);
+        $stmt->execute();
 
         $summary = $stmt->fetch();
 
@@ -320,25 +283,32 @@ class BillingRepository
                     0
                 ) AS paid_amount
             FROM payments p
-            WHERE p.tenant_id = :tenant_id
         ";
 
         $paymentStmt = $this->db->prepare($paymentSql);
 
-        $paymentStmt->execute([
-            ':tenant_id' => $tenantId
-        ]);
+        $paymentStmt->execute();
 
         $paymentSummary = $paymentStmt->fetch();
 
-        $totalAmount = (float) ($summary['total_amount'] ?? 0);
-        $paidAmount = (float) ($paymentSummary['paid_amount'] ?? 0);
+        $totalAmount = (float) (
+            $summary['total_amount'] ?? 0
+        );
+
+        $paidAmount = (float) (
+            $paymentSummary['paid_amount'] ?? 0
+        );
 
         return [
-            'total_invoices' => (int) ($summary['total_invoices'] ?? 0),
+            'total_invoices' => (int) (
+                $summary['total_invoices'] ?? 0
+            ),
             'total_amount' => $totalAmount,
             'paid_amount' => $paidAmount,
-            'pending_amount' => max(0, $totalAmount - $paidAmount)
+            'pending_amount' => max(
+                0,
+                $totalAmount - $paidAmount
+            )
         ];
     }
 }

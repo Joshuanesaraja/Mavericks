@@ -1,168 +1,182 @@
 <?php
 
-require_once __DIR__ . '/../Security/JWT.php';
-require_once __DIR__ . '/../Repositories/UserRepository.php';
+require_once __DIR__ . '/../Config/database.php';
+require_once __DIR__ . '/../Config/jwt.php';
 require_once __DIR__ . '/../Repositories/TenantRepository.php';
-require_once __DIR__ . '/../Helpers/Response.php';
+require_once __DIR__ . '/../Repositories/UserRepository.php';
+
+use Firebase\JWT\JWT;
+use Firebase\JWT\Key;
 
 class AuthMiddleware
 {
-    public static function handle(): object
+    /**
+     * Authenticate the request and attach
+     * authenticated user + tenant information
+     * to the JWT payload.
+     */
+    public static function authenticate(): object
     {
         /*
-         * Access token is normally stored in an HttpOnly cookie.
-         * Bearer token is also supported for API testing.
+         * 1. Get access token.
+         *
+         * Primary source:
+         *     HttpOnly access_token cookie
+         *
+         * Fallback:
+         *     Authorization: Bearer <token>
          */
-        $token = $_COOKIE['access_token'] ?? '';
+        $token = $_COOKIE['access_token'] ?? null;
 
-        if ($token === '') {
+        if (!$token) {
             $authorization = $_SERVER['HTTP_AUTHORIZATION'] ?? '';
 
-            if (
-                $authorization !== '' &&
-                preg_match(
-                    '/Bearer\s+(.+)/i',
-                    $authorization,
-                    $matches
-                )
-            ) {
+            if (preg_match('/^Bearer\s+(.+)$/i', $authorization, $matches)) {
                 $token = trim($matches[1]);
             }
         }
 
-        if ($token === '') {
-            Response::error(
-                'Authentication required',
-                401
-            );
-            exit;
-        }
-
-        try {
-            /*
-             * Decode and verify JWT signature.
-             */
-            $payload = JWT::decode($token);
-
-        } catch (Throwable $e) {
-
-            Response::error(
-                'Invalid or expired access token',
-                401
-            );
+        if (!$token) {
+            Response::error('Authentication required', 401);
             exit;
         }
 
         /*
-         * Only access tokens are allowed here.
+         * 2. Decode and verify JWT.
          */
-        if (($payload->type ?? '') !== 'access') {
-            Response::error(
-                'Invalid access token',
-                401
+        try {
+            $payload = JWT::decode(
+                $token,
+                new Key($_ENV['JWT_SECRET'], 'HS256')
             );
+        } catch (Throwable $e) {
+            Response::error('Invalid or expired access token', 401);
             exit;
         }
 
-        $userId = (int) ($payload->sub ?? 0);
-        $tenantId = (int) ($payload->tenant_id ?? 0);
+        /*
+         * 3. Make sure this is an access token.
+         */
+        if (($payload->type ?? null) !== 'access') {
+            Response::error('Invalid token type', 401);
+            exit;
+        }
+
+        /*
+         * 4. Validate required JWT claims.
+         */
+        $userId = isset($payload->sub)
+            ? (int) $payload->sub
+            : 0;
+
+        $tenantId = isset($payload->tenant_id)
+            ? (int) $payload->tenant_id
+            : 0;
 
         if ($userId <= 0 || $tenantId <= 0) {
-            Response::error(
-                'Invalid authentication claims',
-                401
-            );
+            Response::error('Invalid authentication data', 401);
             exit;
         }
 
         /*
-         * ---------------------------------------------------------
-         * TENANT VALIDATION
-         * ---------------------------------------------------------
+         * 5. Find the tenant from Master DB.
          *
-         * Tenant information is controlled by master_db.
-         *
-         * We MUST validate the tenant before allowing access
-         * to any tenant-owned EHR data.
+         * Master DB is used only to resolve:
+         *     tenant ID
+         *     tenant status
+         *     tenant database
+         *     tenant database credentials
          */
-        $tenantRepository = new TenantRepository();
+        try {
+            $tenantRepository = new TenantRepository();
 
-        $tenant = $tenantRepository->findActiveById(
-            $tenantId
-        );
+            $tenant = $tenantRepository->findActiveById($tenantId);
+        } catch (Throwable $e) {
+            Response::error('Unable to resolve tenant', 500);
+            exit;
+        }
 
         if (!$tenant) {
-            Response::error(
-                'Tenant is invalid or inactive',
-                403
-            );
+            Response::error('Tenant not found or inactive', 403);
             exit;
         }
 
         /*
-         * ---------------------------------------------------------
-         * USER VALIDATION
-         * ---------------------------------------------------------
-         *
-         * User information is stored in ehr_db.
-         *
-         * The tenant_id from the JWT is used together with the
-         * user ID so that a user cannot access another tenant's
-         * account.
+         * 6. Make sure the tenant has been provisioned.
          */
-        $userRepository = new UserRepository();
+        if (
+            empty($tenant['db_name']) ||
+            empty($tenant['db_host']) ||
+            empty($tenant['db_user']) ||
+            empty($tenant['db_password'])
+        ) {
+            Response::error('Tenant database is not configured', 500);
+            exit;
+        }
 
-        $user = $userRepository->findById(
-            $userId,
-            $tenantId
-        );
+        /*
+         * 7. Put tenant database information into
+         * the request-local JWT payload object.
+         *
+         * IMPORTANT:
+         * These values are NOT added to or regenerated
+         * into the JWT itself.
+         */
+        $payload->tenant_db_name = $tenant['db_name'];
+        $payload->tenant_db_host = $tenant['db_host'];
+        $payload->tenant_db_user = $tenant['db_user'];
+        $payload->tenant_db_password = $tenant['db_password'];
+
+        /*
+         * 8. Find the authenticated user inside
+         * the tenant's own database.
+         */
+        try {
+            $userRepository = new UserRepository();
+
+            $user = $userRepository->findById(
+                $payload,
+                $userId
+            );
+        } catch (Throwable $e) {
+            Response::error('Unable to access tenant database', 500);
+            exit;
+        }
 
         if (!$user) {
-            Response::error(
-                'User not found',
-                401
-            );
+            Response::error('User not found', 401);
             exit;
         }
 
         /*
-         * User must still be active.
+         * 9. Check user status.
          */
         if (($user['status'] ?? '') !== 'active') {
-            Response::error(
-                'User account is inactive',
-                403
-            );
+            Response::error('User account is inactive', 403);
             exit;
         }
 
         /*
-         * Verify that the user's tenant matches the tenant
-         * represented by the JWT.
+         * 10. Attach authenticated user information.
          */
-        if ((int) $user['tenant_id'] !== $tenantId) {
-            Response::error(
-                'Tenant access denied',
-                403
-            );
-            exit;
-        }
-
-        /*
-         * Store useful authenticated-user information in the
-         * decoded JWT object.
-         *
-         * Controllers and RoleMiddleware can use these values.
-         */
-        $payload->user_id = $userId;
-        $payload->tenant_id = $tenantId;
-        $payload->tenant = $tenant;
         $payload->user = $user;
 
         /*
-         * Roles are already present in the JWT, but make sure
-         * the authenticated user's current roles are available
-         * from the database as well.
+         * 11. Attach tenant information.
+         */
+        $payload->tenant = [
+            'id' => (int) $tenant['id'],
+            'name' => $tenant['name'],
+            'subdomain' => $tenant['subdomain'],
+            'status' => $tenant['status'],
+            'trial_end' => $tenant['trial_end'],
+            'subscription_status' => $tenant['subscription_status'],
+            'db_name' => $tenant['db_name'],
+            'db_host' => $tenant['db_host']
+        ];
+
+        /*
+         * 12. Attach roles.
          */
         $payload->roles = $user['roles'] ?? [];
 
