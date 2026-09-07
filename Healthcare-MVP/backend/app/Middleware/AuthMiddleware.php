@@ -1,7 +1,7 @@
 <?php
 
 require_once __DIR__ . '/../Config/database.php';
-require_once __DIR__ . '/../Config/jwt.php';
+require_once __DIR__ . '/../Security/JWT.php';
 require_once __DIR__ . '/../Repositories/TenantRepository.php';
 require_once __DIR__ . '/../Repositories/UserRepository.php';
 
@@ -15,7 +15,7 @@ class AuthMiddleware
      * authenticated user + tenant information
      * to the JWT payload.
      */
-    public static function authenticate(): object
+    public static function handle(): object
     {
         /*
          * 1. Get access token.
@@ -75,6 +75,38 @@ class AuthMiddleware
 
         if ($userId <= 0 || $tenantId <= 0) {
             Response::error('Invalid authentication data', 401);
+            exit;
+        }
+
+        // This checks whether someone could take a valid Test Hospital access token and manually use it against another tenant.
+
+        $host = $_SERVER['HTTP_HOST'] ?? '';
+        $host = strtolower(trim(explode(':', $host)[0]));
+
+        $subdomain = null;
+
+        if (preg_match('/^([a-z0-9-]+)\.heal\.com$/', $host, $matches)) {
+            $subdomain = $matches[1];
+        } elseif (preg_match('/^([a-z0-9-]+)\.localhost$/', $host, $matches)) {
+            $subdomain = $matches[1];
+        }
+
+        if (!$subdomain) {
+            Response::error('Invalid tenant host', 400);
+            exit;
+        }
+
+        $tenantRepository = new TenantRepository();
+
+        $requestTenant = $tenantRepository->findActiveBySubdomain($subdomain);
+
+        if (!$requestTenant) {
+            Response::error('Tenant not found or inactive', 403);
+            exit;
+        }
+
+        if ((int)$requestTenant['id'] !== $tenantId) {
+            Response::error('Tenant access denied', 403);
             exit;
         }
 

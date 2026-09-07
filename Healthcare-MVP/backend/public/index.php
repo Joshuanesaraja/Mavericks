@@ -13,6 +13,10 @@ $request = $_GET['request'] ?? '';
 
 if ($request === '') {
     $request = trim(parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH), '/');
+
+    if (str_starts_with($request, 'api/')) {
+        $request = substr($request, 4);
+    }
 }
 
 // Read and decode JSON body once.

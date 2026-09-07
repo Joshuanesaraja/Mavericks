@@ -59,26 +59,32 @@ class TenantRepository
     {
         $stmt = $this->db->prepare(
             'SELECT
-                id,
-                name,
-                subdomain,
-                status,
-                trial_end,
-                subscription_status,
-                db_name,
-                db_host,
-                db_user,
-                db_password,
-                created_at
-             FROM tenants
-             WHERE subdomain = :subdomain
-               AND status = :status
-             LIMIT 1'
+            id,
+            name,
+            subdomain,
+            status,
+            trial_end,
+            subscription_status,
+            db_name,
+            db_host,
+            db_user,
+            db_password,
+            created_at
+         FROM tenants
+         WHERE subdomain = :subdomain
+           AND status = :status
+           AND (
+                trial_end IS NULL
+                OR trial_end >= CURDATE()
+                OR subscription_status = :subscription_status
+           )
+         LIMIT 1'
         );
 
         $stmt->execute([
             ':subdomain' => $subdomain,
-            ':status' => 'active'
+            ':status' => 'active',
+            ':subscription_status' => 'paid'
         ]);
 
         $tenant = $stmt->fetch();

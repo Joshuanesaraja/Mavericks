@@ -2,7 +2,7 @@
 
 require_once __DIR__ . '/../Repositories/UserRepository.php';
 require_once __DIR__ . '/../Config/database.php';
-require_once __DIR__ . '/../Config/hash.php';
+require_once __DIR__ . '/../Security/Hash.php';
 
 class UserService
 {
