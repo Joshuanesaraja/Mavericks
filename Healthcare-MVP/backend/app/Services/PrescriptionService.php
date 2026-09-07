@@ -30,14 +30,33 @@ class PrescriptionService
             ];
         }
 
-        $patientId  = (int) ($input['patient_id'] ?? 0);
-        $details    = $input['details'] ?? $input['medications'] ?? null;
+        $patientId = (int) ($input['patient_id'] ?? 0);
+        $details   = $input['details'] ?? $input['medications'] ?? null;
 
         if ($patientId <= 0 || empty($details)) {
             return [
                 'success' => false,
                 'code'    => 400,
                 'message' => 'patient_id and details (medications/dosage/instructions) are required'
+            ];
+        }
+
+        /*
+        * Verify that the patient:
+        * 1. Exists
+        * 2. Belongs to the authenticated tenant
+        * 3. Has not been soft-deleted
+        */
+        $patient = PrescriptionRepository::findPatientByIdAndTenant(
+            $patientId,
+            $tenantId
+        );
+
+        if (!$patient) {
+            return [
+                'success' => false,
+                'code'    => 404,
+                'message' => 'Patient not found'
             ];
         }
 

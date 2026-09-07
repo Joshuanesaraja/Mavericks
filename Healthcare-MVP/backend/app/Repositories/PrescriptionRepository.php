@@ -4,6 +4,41 @@ require_once __DIR__ . '/../Config/database.php';
 
 class PrescriptionRepository
 {
+    
+    /**
+     * Find an active patient belonging to the given tenant.
+     *
+     * This prevents a prescription from being created for:
+     * - a non-existent patient
+     * - a patient from another tenant
+     * - a soft-deleted patient
+     */
+    public static function findPatientByIdAndTenant(
+        int $patientId,
+        int $tenantId
+    ): ?array {
+        $db = Database::connect();
+
+        $sql = '
+            SELECT id, tenant_id, user_id
+            FROM patients
+            WHERE id = :patient_id
+            AND tenant_id = :tenant_id
+            AND deleted_at IS NULL
+            LIMIT 1
+        ';
+
+        $stmt = $db->prepare($sql);
+
+        $stmt->execute([
+            'patient_id' => $patientId,
+            'tenant_id'  => $tenantId,
+        ]);
+
+        $result = $stmt->fetch(PDO::FETCH_ASSOC);
+
+        return $result ?: null;
+    }
     /**
      * Create a new prescription record.
      */

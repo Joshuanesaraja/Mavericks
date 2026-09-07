@@ -919,7 +919,7 @@ class Router
         }
 
         if (
-            ($method === 'POST' || $method === 'PUT') &&
+            ($method === 'PUT') &&
             ($request === 'prescriptions/verify' || $request === 'prescriptions/status')
         ) {
             $auth = AuthMiddleware::handle();
@@ -927,7 +927,7 @@ class Router
                 return;
             }
 
-            if (!RoleMiddleware::handle($auth, ['Pharmacist', 'Admin'])) {
+            if (!RoleMiddleware::handle($auth, ['Pharmacist'])) {
                 return;
             }
 
@@ -980,6 +980,7 @@ class Router
 
             return;
         }
+
         // =========================================================
         // MODULE 6: DASHBOARD & REPORTS
         // Admin + Provider
