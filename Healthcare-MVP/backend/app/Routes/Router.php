@@ -24,12 +24,14 @@ require_once __DIR__ . '/../Middleware/RoleMiddleware.php';
 require_once __DIR__ . '/../Middleware/RateLimit.php';
 
 require_once __DIR__ . '/../Controllers/BillingController.php';
+require_once __DIR__ . '/../Controllers/DashboardController.php';
 
 use App\Controllers\PatientController;
 use App\Services\PatientService;
 use App\Repositories\PatientRepository;
 
 use App\Controllers\BillingController;
+use App\Controllers\DashboardController;
 
 class Router
 {
@@ -978,7 +980,110 @@ class Router
 
             return;
         }
+        // =========================================================
+        // MODULE 6: DASHBOARD & REPORTS
+        // Admin + Provider
+        // =========================================================
 
+        // GET /dashboard
+        if (
+            $method === 'GET' &&
+            $request === 'dashboard'
+        ) {
+            $auth = AuthMiddleware::handle();
+
+            if ($auth === null) {
+                return;
+            }
+
+            if (!RoleMiddleware::handle(
+                $auth,
+                ['Admin', 'Provider']
+            )) {
+                return;
+            }
+
+            DashboardController::dashboard(
+                $auth
+            );
+
+            return;
+        }
+
+        // GET /reports/appointments
+        if (
+            $method === 'GET' &&
+            $request === 'reports/appointments'
+        ) {
+            $auth = AuthMiddleware::handle();
+
+            if ($auth === null) {
+                return;
+            }
+
+            if (!RoleMiddleware::handle(
+                $auth,
+                ['Admin', 'Provider']
+            )) {
+                return;
+            }
+
+            DashboardController::appointmentReport(
+                $auth
+            );
+
+            return;
+        }
+
+        // GET /reports/prescriptions
+        if (
+            $method === 'GET' &&
+            $request === 'reports/prescriptions'
+        ) {
+            $auth = AuthMiddleware::handle();
+
+            if ($auth === null) {
+                return;
+            }
+
+            if (!RoleMiddleware::handle(
+                $auth,
+                ['Admin', 'Provider']
+            )) {
+                return;
+            }
+
+            DashboardController::prescriptionReport(
+                $auth
+            );
+
+            return;
+        }
+
+        // GET /analytics/tenant
+        if (
+            $method === 'GET' &&
+            $request === 'analytics/tenant'
+        ) {
+            $auth = AuthMiddleware::handle();
+
+            if ($auth === null) {
+                return;
+            }
+
+            if (!RoleMiddleware::handle(
+                $auth,
+                ['Admin', 'Provider']
+            )) {
+                return;
+            }
+
+            DashboardController::tenantAnalytics(
+                $auth
+            );
+
+            return;
+        }
 
         // =========================================================
         // MODULE 7: COMMUNICATION
