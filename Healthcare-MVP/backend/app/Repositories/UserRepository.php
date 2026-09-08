@@ -226,10 +226,27 @@ class UserRepository
     ): bool {
         $db = self::db($auth);
 
+        $check = $db->prepare(
+            'SELECT id
+            FROM users
+            WHERE id = :id
+            LIMIT 1'
+        );
+
+        $check->execute([
+            ':id' => $userId
+        ]);
+
+        if (!$check->fetch()) {
+            throw new RuntimeException(
+                'User not found.'
+            );
+        }
+
         $stmt = $db->prepare(
             'UPDATE users
-             SET status = :status
-             WHERE id = :id'
+            SET status = :status
+            WHERE id = :id'
         );
 
         return $stmt->execute([
