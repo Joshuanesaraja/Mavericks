@@ -256,58 +256,51 @@ class BillingRepository
     }
 
     // Retrieve billing totals for the current tenant.
+    // Retrieve billing totals for the current tenant.
     public function getBillingSummary(): array
     {
         $sql = "
-            SELECT
-                COUNT(*) AS total_invoices,
-                COALESCE(SUM(amount), 0) AS total_amount
-            FROM invoices
-        ";
+        SELECT
+            COUNT(*) AS total_invoices,
+            COALESCE(SUM(amount), 0) AS total_amount,
+            COALESCE(
+                SUM(
+                    CASE
+                        WHEN status = 'paid' THEN amount
+                        ELSE 0
+                    END
+                ),
+                0
+            ) AS paid_amount,
+            COALESCE(
+                SUM(
+                    CASE
+                        WHEN status = 'pending' THEN amount
+                        ELSE 0
+                    END
+                ),
+                0
+            ) AS pending_amount
+        FROM invoices
+    ";
 
         $stmt = $this->db->prepare($sql);
-
         $stmt->execute();
 
         $summary = $stmt->fetch();
-
-        $paymentSql = "
-            SELECT
-                COALESCE(
-                    SUM(
-                        CASE
-                            WHEN p.status = 'paid' THEN p.amount
-                            ELSE 0
-                        END
-                    ),
-                    0
-                ) AS paid_amount
-            FROM payments p
-        ";
-
-        $paymentStmt = $this->db->prepare($paymentSql);
-
-        $paymentStmt->execute();
-
-        $paymentSummary = $paymentStmt->fetch();
-
-        $totalAmount = (float) (
-            $summary['total_amount'] ?? 0
-        );
-
-        $paidAmount = (float) (
-            $paymentSummary['paid_amount'] ?? 0
-        );
 
         return [
             'total_invoices' => (int) (
                 $summary['total_invoices'] ?? 0
             ),
-            'total_amount' => $totalAmount,
-            'paid_amount' => $paidAmount,
-            'pending_amount' => max(
-                0,
-                $totalAmount - $paidAmount
+            'total_amount' => (float) (
+                $summary['total_amount'] ?? 0
+            ),
+            'paid_amount' => (float) (
+                $summary['paid_amount'] ?? 0
+            ),
+            'pending_amount' => (float) (
+                $summary['pending_amount'] ?? 0
             )
         ];
     }
