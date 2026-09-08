@@ -5,27 +5,47 @@ require_once __DIR__ . '/../Config/database.php';
 class AppointmentRepository
 {
     /**
-     * Check if a provider has an overlapping appointment within the given tenant.
+     * Get dynamic tenant database connection.
+     */
+    private static function db(object|array $auth): PDO
+    {
+        if (is_object($auth)) {
+            $dbName = $auth->tenant_db_name ?? null;
+            $dbUser = $auth->tenant_db_user ?? null;
+            $dbPass = $auth->tenant_db_password ?? null;
+        } else {
+            $dbName = $auth['tenant_db_name'] ?? null;
+            $dbUser = $auth['tenant_db_user'] ?? null;
+            $dbPass = $auth['tenant_db_password'] ?? null;
+        }
+
+        if (!empty($dbName)) {
+            return Database::tenant((string) $dbName, $dbUser, $dbPass);
+        }
+
+        return Database::connect();
+    }
+
+    /**
+     * Check if a provider has an overlapping appointment in the tenant database.
      * Overlap condition: (existing.start_at < new.end_at AND existing.end_at > new.start_at)
      */
     public static function hasOverlappingAppointment(
-        int $tenantId,
+        object|array $auth,
         int $providerId,
         string $startAt,
         string $endAt,
         ?int $excludeId = null
     ): bool {
-        $db = Database::connect();
+        $db = self::db($auth);
 
         $sql = "SELECT COUNT(*) FROM appointments
-        WHERE tenant_id = :tenant_id
-          AND provider_id = :provider_id
-          AND status NOT IN ('cancelled', 'completed')
-          AND start_at < :end_at
-          AND end_at > :start_at";
+                WHERE provider_id = :provider_id
+                  AND status NOT IN ('cancelled', 'completed')
+                  AND start_at < :end_at
+                  AND end_at > :start_at";
 
         $params = [
-            'tenant_id'   => $tenantId,
             'provider_id' => $providerId,
             'start_at'    => $startAt,
             'end_at'      => $endAt,
@@ -43,20 +63,19 @@ class AppointmentRepository
     }
 
     /**
-     * Create a new appointment record.
+     * Create a new appointment record in tenant database.
      */
-    public static function create(array $data): int
+    public static function create(object|array $auth, array $data): int
     {
-        $db = Database::connect();
+        $db = self::db($auth);
 
         $sql = 'INSERT INTO appointments
-                (tenant_id, patient_id, provider_id, start_at, end_at, status, reason)
+                (patient_id, provider_id, start_at, end_at, status, reason)
                 VALUES
-                (:tenant_id, :patient_id, :provider_id, :start_at, :end_at, :status, :reason)';
+                (:patient_id, :provider_id, :start_at, :end_at, :status, :reason)';
 
         $stmt = $db->prepare($sql);
         $stmt->execute([
-            'tenant_id'   => $data['tenant_id'],
             'patient_id'  => $data['patient_id'],
             'provider_id' => $data['provider_id'],
             'start_at'    => $data['start_at'],
@@ -69,11 +88,11 @@ class AppointmentRepository
     }
 
     /**
-     * Find appointment by ID and tenant ID.
+     * Find appointment by ID in tenant database.
      */
-    public static function findById(int $id, int $tenantId): ?array
+    public static function findById(object|array $auth, int $id): ?array
     {
-        $db = Database::connect();
+        $db = self::db($auth);
 
         $sql = 'SELECT a.*,
                        pu.name AS patient_name, pu.email AS patient_email,
@@ -81,14 +100,11 @@ class AppointmentRepository
                 FROM appointments a
                 LEFT JOIN users pu ON pu.id = a.patient_id
                 LEFT JOIN users du ON du.id = a.provider_id
-                WHERE a.id = :id AND a.tenant_id = :tenant_id
+                WHERE a.id = :id
                 LIMIT 1';
 
         $stmt = $db->prepare($sql);
-        $stmt->execute([
-            'id'        => $id,
-            'tenant_id' => $tenantId,
-        ]);
+        $stmt->execute(['id' => $id]);
 
         $result = $stmt->fetch(PDO::FETCH_ASSOC);
         return $result ?: null;
@@ -97,15 +113,12 @@ class AppointmentRepository
     /**
      * Update appointment details.
      */
-    public static function update(int $id, int $tenantId, array $data): bool
+    public static function update(object|array $auth, int $id, array $data): bool
     {
-        $db = Database::connect();
+        $db = self::db($auth);
 
         $fields = [];
-        $params = [
-            'id'        => $id,
-            'tenant_id' => $tenantId,
-        ];
+        $params = ['id' => $id];
 
         if (array_key_exists('patient_id', $data)) {
             $fields[] = 'patient_id = :patient_id';
@@ -139,7 +152,7 @@ class AppointmentRepository
             return false;
         }
 
-        $sql = 'UPDATE appointments SET ' . implode(', ', $fields) . ' WHERE id = :id AND tenant_id = :tenant_id';
+        $sql = 'UPDATE appointments SET ' . implode(', ', $fields) . ' WHERE id = :id';
         $stmt = $db->prepare($sql);
         return $stmt->execute($params);
     }
@@ -147,62 +160,57 @@ class AppointmentRepository
     /**
      * Update appointment status.
      */
-    public static function updateStatus(int $id, int $tenantId, string $status): bool
+    public static function updateStatus(object|array $auth, int $id, string $status): bool
     {
-        $db = Database::connect();
+        $db = self::db($auth);
 
         if ($status === 'cancelled') {
-            $sql = 'UPDATE appointments SET status = :status, cancelled_at = NOW() WHERE id = :id AND tenant_id = :tenant_id';
+            $sql = 'UPDATE appointments SET status = :status, cancelled_at = NOW() WHERE id = :id';
         } else {
-            $sql = 'UPDATE appointments SET status = :status WHERE id = :id AND tenant_id = :tenant_id';
+            $sql = 'UPDATE appointments SET status = :status WHERE id = :id';
         }
 
         $stmt = $db->prepare($sql);
         return $stmt->execute([
-            'id'        => $id,
-            'tenant_id' => $tenantId,
-            'status'    => $status,
+            'id'     => $id,
+            'status' => $status,
         ]);
     }
 
     /**
-     * Cancel an appointment with optional reason update.
+     * Cancel an appointment with optional reason.
      */
-    public static function cancel(int $id, int $tenantId, ?string $reason = null): bool
+    public static function cancel(object|array $auth, int $id, ?string $reason = null): bool
     {
-        $db = Database::connect();
+        $db = self::db($auth);
 
         if ($reason !== null) {
             $sql = 'UPDATE appointments
                     SET status = "cancelled", cancelled_at = NOW(), reason = :reason
-                    WHERE id = :id AND tenant_id = :tenant_id';
+                    WHERE id = :id';
             $stmt = $db->prepare($sql);
             return $stmt->execute([
-                'id'        => $id,
-                'tenant_id' => $tenantId,
-                'reason'    => $reason,
+                'id'     => $id,
+                'reason' => $reason,
             ]);
         }
 
         $sql = 'UPDATE appointments
                 SET status = "cancelled", cancelled_at = NOW()
-                WHERE id = :id AND tenant_id = :tenant_id';
+                WHERE id = :id';
         $stmt = $db->prepare($sql);
-        return $stmt->execute([
-            'id'        => $id,
-            'tenant_id' => $tenantId,
-        ]);
+        return $stmt->execute(['id' => $id]);
     }
 
     /**
      * Get upcoming appointments starting from current time.
      */
     public static function getUpcoming(
-        int $tenantId,
+        object|array $auth,
         ?int $patientId = null,
         ?int $providerId = null
     ): array {
-        $db = Database::connect();
+        $db = self::db($auth);
 
         $sql = 'SELECT a.*,
                        pu.name AS patient_name, pu.email AS patient_email,
@@ -210,11 +218,10 @@ class AppointmentRepository
                 FROM appointments a
                 LEFT JOIN users pu ON pu.id = a.patient_id
                 LEFT JOIN users du ON du.id = a.provider_id
-                WHERE a.tenant_id = :tenant_id
-                  AND a.start_at >= NOW()
+                WHERE a.start_at >= NOW()
                   AND a.status != "cancelled"';
 
-        $params = ['tenant_id' => $tenantId];
+        $params = [];
 
         if ($patientId !== null) {
             $sql .= ' AND a.patient_id = :patient_id';
@@ -237,9 +244,9 @@ class AppointmentRepository
     /**
      * List appointments with flexible filtering options.
      */
-    public static function listAll(int $tenantId, array $filters = []): array
+    public static function listAll(object|array $auth, array $filters = []): array
     {
-        $db = Database::connect();
+        $db = self::db($auth);
 
         $sql = 'SELECT a.*,
                        pu.name AS patient_name, pu.email AS patient_email,
@@ -247,9 +254,9 @@ class AppointmentRepository
                 FROM appointments a
                 LEFT JOIN users pu ON pu.id = a.patient_id
                 LEFT JOIN users du ON du.id = a.provider_id
-                WHERE a.tenant_id = :tenant_id';
+                WHERE 1=1';
 
-        $params = ['tenant_id' => $tenantId];
+        $params = [];
 
         if (!empty($filters['patient_id'])) {
             $sql .= ' AND a.patient_id = :patient_id';

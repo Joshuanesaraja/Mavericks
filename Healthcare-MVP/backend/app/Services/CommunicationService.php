@@ -7,14 +7,29 @@ require_once __DIR__ . '/../Security/AES.php';
 
 class CommunicationService
 {
+    private static function getUserId(object|array $user): int
+    {
+        if (is_object($user)) {
+            return (int) ($user->sub ?? $user->id ?? 0);
+        }
+        return (int) ($user['userId'] ?? $user['user_id'] ?? $user['id'] ?? 0);
+    }
+
+    private static function getUserRoles(object|array $user): array
+    {
+        if (is_object($user)) {
+            return (array) ($user->roles ?? []);
+        }
+        return (array) ($user['roles'] ?? []);
+    }
+
     /**
      * Create an encrypted appointment note (Provider/Nurse/Admin).
      */
-    public static function createNote(object $auth, array $input): array
+    public static function createNote(object|array $user, array $input): array
     {
-        $tenantId      = (int) $auth->tenant_id;
-        $userId        = (int) $auth->sub;
-        $roles         = (array) ($auth->roles ?? []);
+        $userId        = self::getUserId($user);
+        $roles         = self::getUserRoles($user);
         $appointmentId = (int) ($input['appointment_id'] ?? 0);
         $content       = trim($input['content'] ?? '');
 
@@ -26,7 +41,6 @@ class CommunicationService
             ];
         }
 
-        // RBAC Check
         if (!in_array('Provider', $roles, true) && !in_array('Nurse', $roles, true) && !in_array('Admin', $roles, true)) {
             return [
                 'success' => false,
@@ -35,7 +49,7 @@ class CommunicationService
             ];
         }
 
-        $appointment = AppointmentRepository::findById($appointmentId, $tenantId);
+        $appointment = AppointmentRepository::findById($user, $appointmentId);
         if (!$appointment) {
             return [
                 'success' => false,
@@ -46,8 +60,7 @@ class CommunicationService
 
         $encryptedContent = AES::encrypt($content);
 
-        $noteId = NoteRepository::create([
-            'tenant_id'         => $tenantId,
+        $noteId = NoteRepository::create($user, [
             'appointment_id'    => $appointmentId,
             'user_id'           => $userId,
             'encrypted_content' => $encryptedContent,
@@ -69,11 +82,8 @@ class CommunicationService
     /**
      * Get notes for an appointment with decrypted content.
      */
-    public static function getNotes(object $auth, int $appointmentId): array
+    public static function getNotes(object|array $user, int $appointmentId): array
     {
-        $tenantId = (int) $auth->tenant_id;
-        $roles    = (array) ($auth->roles ?? []);
-
         if ($appointmentId <= 0) {
             return [
                 'success' => false,
@@ -82,7 +92,7 @@ class CommunicationService
             ];
         }
 
-        $appointment = AppointmentRepository::findById($appointmentId, $tenantId);
+        $appointment = AppointmentRepository::findById($user, $appointmentId);
         if (!$appointment) {
             return [
                 'success' => false,
@@ -91,7 +101,7 @@ class CommunicationService
             ];
         }
 
-        $notes = NoteRepository::getByAppointment($appointmentId, $tenantId);
+        $notes = NoteRepository::getByAppointment($user, $appointmentId);
 
         foreach ($notes as &$note) {
             try {
@@ -113,10 +123,9 @@ class CommunicationService
     /**
      * Send an encrypted message linked to an appointment.
      */
-    public static function sendMessage(object $auth, array $input): array
+    public static function sendMessage(object|array $user, array $input): array
     {
-        $tenantId      = (int) $auth->tenant_id;
-        $senderId      = (int) $auth->sub;
+        $senderId      = self::getUserId($user);
         $appointmentId = (int) ($input['appointment_id'] ?? 0);
         $receiverId    = (int) ($input['receiver_id'] ?? 0);
         $content       = trim($input['content'] ?? '');
@@ -129,7 +138,7 @@ class CommunicationService
             ];
         }
 
-        $appointment = AppointmentRepository::findById($appointmentId, $tenantId);
+        $appointment = AppointmentRepository::findById($user, $appointmentId);
         if (!$appointment) {
             return [
                 'success' => false,
@@ -138,7 +147,6 @@ class CommunicationService
             ];
         }
 
-        // Auto-resolve receiver if not supplied
         if ($receiverId <= 0) {
             if ($senderId === (int) $appointment['patient_id']) {
                 $receiverId = (int) $appointment['provider_id'];
@@ -149,8 +157,7 @@ class CommunicationService
 
         $encryptedContent = AES::encrypt($content);
 
-        $messageId = MessageRepository::create([
-            'tenant_id'         => $tenantId,
+        $messageId = MessageRepository::create($user, [
             'appointment_id'    => $appointmentId,
             'sender_id'         => $senderId,
             'receiver_id'       => $receiverId,
@@ -175,11 +182,10 @@ class CommunicationService
     /**
      * Get message history for an appointment with decrypted content.
      */
-    public static function getMessageHistory(object $auth, int $appointmentId): array
+    public static function getMessageHistory(object|array $user, int $appointmentId): array
     {
-        $tenantId = (int) $auth->tenant_id;
-        $userId   = (int) $auth->sub;
-        $roles    = (array) ($auth->roles ?? []);
+        $userId = self::getUserId($user);
+        $roles  = self::getUserRoles($user);
 
         if ($appointmentId <= 0) {
             return [
@@ -189,7 +195,7 @@ class CommunicationService
             ];
         }
 
-        $appointment = AppointmentRepository::findById($appointmentId, $tenantId);
+        $appointment = AppointmentRepository::findById($user, $appointmentId);
         if (!$appointment) {
             return [
                 'success' => false,
@@ -198,7 +204,6 @@ class CommunicationService
             ];
         }
 
-        // RBAC Visibility Check
         if (
             !in_array('Admin', $roles, true) &&
             $userId !== (int) $appointment['patient_id'] &&
@@ -211,7 +216,7 @@ class CommunicationService
             ];
         }
 
-        $messages = MessageRepository::getByAppointment($appointmentId, $tenantId);
+        $messages = MessageRepository::getByAppointment($user, $appointmentId);
 
         foreach ($messages as &$msg) {
             try {

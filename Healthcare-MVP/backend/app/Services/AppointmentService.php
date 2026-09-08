@@ -13,11 +13,35 @@ class AppointmentService
     ];
 
     /**
+     * Helper to extract user ID safely from object or array.
+     */
+    private static function getUserId(object|array $user): int
+    {
+        if (is_object($user)) {
+            return (int) ($user->sub ?? $user->id ?? 0);
+        }
+        return (int) ($user['userId'] ?? $user['user_id'] ?? $user['id'] ?? 0);
+    }
+
+    /**
+     * Helper to extract user roles safely from object or array.
+     */
+    private static function getUserRoles(object|array $user): array
+    {
+        if (is_object($user)) {
+            return (array) ($user->roles ?? []);
+        }
+        return (array) ($user['roles'] ?? []);
+    }
+
+    /**
      * Create a new appointment with validation and conflict checking.
      */
-    public static function createAppointment(array $user, array $input): array
+    public static function createAppointment(object|array $user, array $input): array
     {
-        $tenantId   = $user['tenantId'];
+        $userId     = self::getUserId($user);
+        $roles      = self::getUserRoles($user);
+
         $patientId  = (int) ($input['patient_id'] ?? 0);
         $providerId = (int) ($input['provider_id'] ?? 0);
         $startAt    = trim($input['start_at'] ?? '');
@@ -53,12 +77,11 @@ class AppointmentService
             ];
         }
 
-        // Format datetimes consistently
         $formattedStart = date('Y-m-d H:i:s', $startTs);
         $formattedEnd   = date('Y-m-d H:i:s', $endTs);
 
         // RBAC: If user is Patient, they must book for themselves
-        if (self::isPatientOnly($user['roles']) && $patientId !== $user['userId']) {
+        if (self::isPatientOnly($roles) && $patientId !== $userId) {
             return [
                 'success' => false,
                 'code'    => 403,
@@ -67,7 +90,7 @@ class AppointmentService
         }
 
         // Time Conflict Check: Ensure provider has no overlapping appointments
-        if (AppointmentRepository::hasOverlappingAppointment($tenantId, $providerId, $formattedStart, $formattedEnd)) {
+        if (AppointmentRepository::hasOverlappingAppointment($user, $providerId, $formattedStart, $formattedEnd)) {
             return [
                 'success' => false,
                 'code'    => 409,
@@ -76,8 +99,7 @@ class AppointmentService
         }
 
         // Insert Record
-        $appointmentId = AppointmentRepository::create([
-            'tenant_id'   => $tenantId,
+        $appointmentId = AppointmentRepository::create($user, [
             'patient_id'  => $patientId,
             'provider_id' => $providerId,
             'start_at'    => $formattedStart,
@@ -86,7 +108,7 @@ class AppointmentService
             'reason'      => $reason ?: null,
         ]);
 
-        $appointment = AppointmentRepository::findById($appointmentId, $tenantId);
+        $appointment = AppointmentRepository::findById($user, $appointmentId);
 
         return [
             'success' => true,
@@ -99,11 +121,9 @@ class AppointmentService
     /**
      * Update an existing appointment (reschedule, change provider/reason).
      */
-    public static function updateAppointment(array $user, int $appointmentId, array $input): array
+    public static function updateAppointment(object|array $user, int $appointmentId, array $input): array
     {
-        $tenantId = $user['tenantId'];
-
-        $existing = AppointmentRepository::findById($appointmentId, $tenantId);
+        $existing = AppointmentRepository::findById($user, $appointmentId);
         if (!$existing) {
             return [
                 'success' => false,
@@ -150,12 +170,12 @@ class AppointmentService
             ];
         }
 
-        // Time Conflict check when timing or provider changes (excluding current appointment ID)
+        // Time Conflict check when timing or provider changes
         if (
             ($formattedStart !== $existing['start_at'] || $formattedEnd !== $existing['end_at'] || $newProviderId !== (int)$existing['provider_id']) &&
             $newStatus !== 'cancelled'
         ) {
-            if (AppointmentRepository::hasOverlappingAppointment($tenantId, $newProviderId, $formattedStart, $formattedEnd, $appointmentId)) {
+            if (AppointmentRepository::hasOverlappingAppointment($user, $newProviderId, $formattedStart, $formattedEnd, $appointmentId)) {
                 return [
                     'success' => false,
                     'code'    => 409,
@@ -173,9 +193,9 @@ class AppointmentService
             'reason'      => $newReason,
         ];
 
-        AppointmentRepository::update($appointmentId, $tenantId, $updateData);
+        AppointmentRepository::update($user, $appointmentId, $updateData);
 
-        $updated = AppointmentRepository::findById($appointmentId, $tenantId);
+        $updated = AppointmentRepository::findById($user, $appointmentId);
 
         return [
             'success' => true,
@@ -188,11 +208,9 @@ class AppointmentService
     /**
      * Cancel an appointment.
      */
-    public static function cancelAppointment(array $user, int $appointmentId, ?string $reason = null): array
+    public static function cancelAppointment(object|array $user, int $appointmentId, ?string $reason = null): array
     {
-        $tenantId = $user['tenantId'];
-
-        $existing = AppointmentRepository::findById($appointmentId, $tenantId);
+        $existing = AppointmentRepository::findById($user, $appointmentId);
         if (!$existing) {
             return [
                 'success' => false,
@@ -209,7 +227,6 @@ class AppointmentService
             ];
         }
 
-        // Authorization check
         if (!self::canModifyAppointment($user, $existing)) {
             return [
                 'success' => false,
@@ -218,9 +235,9 @@ class AppointmentService
             ];
         }
 
-        AppointmentRepository::cancel($appointmentId, $tenantId, $reason);
+        AppointmentRepository::cancel($user, $appointmentId, $reason);
 
-        $updated = AppointmentRepository::findById($appointmentId, $tenantId);
+        $updated = AppointmentRepository::findById($user, $appointmentId);
 
         return [
             'success' => true,
@@ -231,12 +248,11 @@ class AppointmentService
     }
 
     /**
-     * Update appointment status specifically (e.g., confirmed, completed, no-show).
+     * Update appointment status specifically.
      */
-    public static function updateStatus(array $user, int $appointmentId, string $status): array
+    public static function updateStatus(object|array $user, int $appointmentId, string $status): array
     {
-        $tenantId = $user['tenantId'];
-        $status   = trim($status);
+        $status = trim($status);
 
         if (!in_array($status, self::$allowedStatuses, true)) {
             return [
@@ -246,7 +262,7 @@ class AppointmentService
             ];
         }
 
-        $existing = AppointmentRepository::findById($appointmentId, $tenantId);
+        $existing = AppointmentRepository::findById($user, $appointmentId);
         if (!$existing) {
             return [
                 'success' => false,
@@ -255,8 +271,8 @@ class AppointmentService
             ];
         }
 
-        // Authorization check (Providers, Nurses, Admins can update status)
-        if (self::isPatientOnly($user['roles'])) {
+        $roles = self::getUserRoles($user);
+        if (self::isPatientOnly($roles)) {
             return [
                 'success' => false,
                 'code'    => 403,
@@ -264,9 +280,9 @@ class AppointmentService
             ];
         }
 
-        AppointmentRepository::updateStatus($appointmentId, $tenantId, $status);
+        AppointmentRepository::updateStatus($user, $appointmentId, $status);
 
-        $updated = AppointmentRepository::findById($appointmentId, $tenantId);
+        $updated = AppointmentRepository::findById($user, $appointmentId);
 
         return [
             'success' => true,
@@ -277,13 +293,12 @@ class AppointmentService
     }
 
     /**
-     * Get upcoming appointments scoped by user role.
+     * Get upcoming appointments.
      */
-    public static function getUpcomingAppointments(array $user): array
+    public static function getUpcomingAppointments(object|array $user): array
     {
-        $tenantId  = $user['tenantId'];
-        $userId    = $user['userId'];
-        $roles     = $user['roles'];
+        $userId = self::getUserId($user);
+        $roles  = self::getUserRoles($user);
 
         $patientFilter  = null;
         $providerFilter = null;
@@ -294,7 +309,7 @@ class AppointmentService
             $providerFilter = $userId;
         }
 
-        $appointments = AppointmentRepository::getUpcoming($tenantId, $patientFilter, $providerFilter);
+        $appointments = AppointmentRepository::getUpcoming($user, $patientFilter, $providerFilter);
 
         return [
             'success' => true,
@@ -307,11 +322,9 @@ class AppointmentService
     /**
      * Get appointment details by ID.
      */
-    public static function getAppointmentDetail(array $user, int $appointmentId): array
+    public static function getAppointmentDetail(object|array $user, int $appointmentId): array
     {
-        $tenantId = $user['tenantId'];
-
-        $appointment = AppointmentRepository::findById($appointmentId, $tenantId);
+        $appointment = AppointmentRepository::findById($user, $appointmentId);
 
         if (!$appointment) {
             return [
@@ -321,11 +334,10 @@ class AppointmentService
             ];
         }
 
-        // Authorization check
-        if (
-            self::isPatientOnly($user['roles']) &&
-            (int) $appointment['patient_id'] !== $user['userId']
-        ) {
+        $userId = self::getUserId($user);
+        $roles  = self::getUserRoles($user);
+
+        if (self::isPatientOnly($roles) && (int) $appointment['patient_id'] !== $userId) {
             return [
                 'success' => false,
                 'code'    => 403,
@@ -344,11 +356,10 @@ class AppointmentService
     /**
      * List appointments with optional filters.
      */
-    public static function listAppointments(array $user, array $filters): array
+    public static function listAppointments(object|array $user, array $filters): array
     {
-        $tenantId = $user['tenantId'];
-        $userId   = $user['userId'];
-        $roles    = $user['roles'];
+        $userId = self::getUserId($user);
+        $roles  = self::getUserRoles($user);
 
         if (self::isPatientOnly($roles)) {
             $filters['patient_id'] = $userId;
@@ -358,7 +369,7 @@ class AppointmentService
             }
         }
 
-        $appointments = AppointmentRepository::listAll($tenantId, $filters);
+        $appointments = AppointmentRepository::listAll($user, $filters);
 
         return [
             'success' => true,
@@ -368,9 +379,6 @@ class AppointmentService
         ];
     }
 
-    /**
-     * Helper: Check if user is only a Patient.
-     */
     private static function isPatientOnly(array $roles): bool
     {
         return in_array('Patient', $roles, true) &&
@@ -379,13 +387,10 @@ class AppointmentService
                !in_array('Nurse', $roles, true);
     }
 
-    /**
-     * Helper: Check if user has permission to modify an appointment.
-     */
-    private static function canModifyAppointment(array $user, array $appointment): bool
+    private static function canModifyAppointment(object|array $user, array $appointment): bool
     {
-        $userId = $user['userId'];
-        $roles  = $user['roles'];
+        $userId = self::getUserId($user);
+        $roles  = self::getUserRoles($user);
 
         if (in_array('Admin', $roles, true) || in_array('Nurse', $roles, true)) {
             return true;

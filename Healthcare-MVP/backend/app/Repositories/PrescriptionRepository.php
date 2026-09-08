@@ -4,72 +4,58 @@ require_once __DIR__ . '/../Config/database.php';
 
 class PrescriptionRepository
 {
-    
     /**
-     * Find an active patient belonging to the given tenant.
-     *
-     * This prevents a prescription from being created for:
-     * - a non-existent patient
-     * - a patient from another tenant
-     * - a soft-deleted patient
+     * Get dynamic tenant database connection.
      */
-    public static function findPatientByIdAndTenant(
-        int $patientId,
-        int $tenantId
-    ): ?array {
-        $db = Database::connect();
-
-        $sql = '
-            SELECT id, tenant_id, user_id
-            FROM patients
-            WHERE id = :patient_id
-            AND tenant_id = :tenant_id
-            AND deleted_at IS NULL
-            LIMIT 1
-        ';
-
-        $stmt = $db->prepare($sql);
-
-        $stmt->execute([
-            'patient_id' => $patientId,
-            'tenant_id'  => $tenantId,
-        ]);
-
-        $result = $stmt->fetch(PDO::FETCH_ASSOC);
-
-        return $result ?: null;
-    }
-    /**
-     * Create a new prescription record.
-     */
-    public static function create(array $data): int
+    private static function db(object|array $auth): PDO
     {
-        $db = Database::connect();
+        if (is_object($auth)) {
+            $dbName = $auth->tenant_db_name ?? null;
+            $dbUser = $auth->tenant_db_user ?? null;
+            $dbPass = $auth->tenant_db_password ?? null;
+        } else {
+            $dbName = $auth['tenant_db_name'] ?? null;
+            $dbUser = $auth['tenant_db_user'] ?? null;
+            $dbPass = $auth['tenant_db_password'] ?? null;
+        }
+
+        if (!empty($dbName)) {
+            return Database::tenant((string) $dbName, $dbUser, $dbPass);
+        }
+
+        return Database::connect();
+    }
+
+    /**
+     * Create a new prescription record in tenant database.
+     */
+    public static function create(object|array $auth, array $data): int
+    {
+        $db = self::db($auth);
 
         $sql = 'INSERT INTO prescriptions
-                (tenant_id, patient_id, provider_id, pharmacist_id, encrypted_data, status)
+                (patient_id, provider_id, pharmacist_id, encrypted_data, status)
                 VALUES
-                (:tenant_id, :patient_id, :provider_id, :pharmacist_id, :encrypted_data, :status)';
+                (:patient_id, :provider_id, :pharmacist_id, :encrypted_data, :status)';
 
         $stmt = $db->prepare($sql);
         $stmt->execute([
-            'tenant_id'      => $data['tenant_id'],
-            'patient_id'     => $data['patient_id'],
-            'provider_id'    => $data['provider_id'],
-            'pharmacist_id'  => $data['pharmacist_id'] ?? null,
-            'encrypted_data' => $data['encrypted_data'],
-            'status'         => $data['status'] ?? 'pending',
+            'patient_id'      => $data['patient_id'],
+            'provider_id'     => $data['provider_id'],
+            'pharmacist_id'   => $data['pharmacist_id'] ?? null,
+            'encrypted_data'  => $data['encrypted_data'],
+            'status'          => $data['status'] ?? 'pending',
         ]);
 
         return (int) $db->lastInsertId();
     }
 
     /**
-     * Find prescription by ID and tenant ID.
+     * Find prescription by ID in tenant database.
      */
-    public static function findById(int $id, int $tenantId): ?array
+    public static function findById(object|array $auth, int $id): ?array
     {
-        $db = Database::connect();
+        $db = self::db($auth);
 
         $sql = 'SELECT p.*,
                        pu.name AS patient_name, pu.email AS patient_email,
@@ -79,14 +65,11 @@ class PrescriptionRepository
                 LEFT JOIN users pu ON pu.id = p.patient_id
                 LEFT JOIN users du ON du.id = p.provider_id
                 LEFT JOIN users ph ON ph.id = p.pharmacist_id
-                WHERE p.id = :id AND p.tenant_id = :tenant_id
+                WHERE p.id = :id
                 LIMIT 1';
 
         $stmt = $db->prepare($sql);
-        $stmt->execute([
-            'id'        => $id,
-            'tenant_id' => $tenantId,
-        ]);
+        $stmt->execute(['id' => $id]);
 
         $result = $stmt->fetch(PDO::FETCH_ASSOC);
         return $result ?: null;
@@ -96,31 +79,29 @@ class PrescriptionRepository
      * Update prescription status and record verifying pharmacist.
      */
     public static function updateStatus(
+        object|array $auth,
         int $id,
-        int $tenantId,
         ?int $pharmacistId,
         string $status
     ): bool {
-        $db = Database::connect();
+        $db = self::db($auth);
 
         if ($pharmacistId !== null) {
             $sql = 'UPDATE prescriptions
                     SET status = :status, pharmacist_id = :pharmacist_id
-                    WHERE id = :id AND tenant_id = :tenant_id';
+                    WHERE id = :id';
             $params = [
                 'id'            => $id,
-                'tenant_id'     => $tenantId,
                 'pharmacist_id' => $pharmacistId,
                 'status'        => $status,
             ];
         } else {
             $sql = 'UPDATE prescriptions
                     SET status = :status
-                    WHERE id = :id AND tenant_id = :tenant_id';
+                    WHERE id = :id';
             $params = [
-                'id'        => $id,
-                'tenant_id' => $tenantId,
-                'status'    => $status,
+                'id'     => $id,
+                'status' => $status,
             ];
         }
 
@@ -131,9 +112,9 @@ class PrescriptionRepository
     /**
      * List prescriptions with filters.
      */
-    public static function listAll(int $tenantId, array $filters = []): array
+    public static function listAll(object|array $auth, array $filters = []): array
     {
-        $db = Database::connect();
+        $db = self::db($auth);
 
         $sql = 'SELECT p.*,
                        pu.name AS patient_name, pu.email AS patient_email,
@@ -143,9 +124,9 @@ class PrescriptionRepository
                 LEFT JOIN users pu ON pu.id = p.patient_id
                 LEFT JOIN users du ON du.id = p.provider_id
                 LEFT JOIN users ph ON ph.id = p.pharmacist_id
-                WHERE p.tenant_id = :tenant_id';
+                WHERE 1=1';
 
-        $params = ['tenant_id' => $tenantId];
+        $params = [];
 
         if (!empty($filters['patient_id'])) {
             $sql .= ' AND p.patient_id = :patient_id';

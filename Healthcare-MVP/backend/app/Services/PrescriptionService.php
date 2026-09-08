@@ -12,16 +12,30 @@ class PrescriptionService
         'cancelled'
     ];
 
+    private static function getUserId(object|array $user): int
+    {
+        if (is_object($user)) {
+            return (int) ($user->sub ?? $user->id ?? 0);
+        }
+        return (int) ($user['userId'] ?? $user['user_id'] ?? $user['id'] ?? 0);
+    }
+
+    private static function getUserRoles(object|array $user): array
+    {
+        if (is_object($user)) {
+            return (array) ($user->roles ?? []);
+        }
+        return (array) ($user['roles'] ?? []);
+    }
+
     /**
      * Provider creates prescription (encrypting data via AES-256).
      */
-    public static function createPrescription(object $auth, array $input): array
+    public static function createPrescription(object|array $user, array $input): array
     {
-        $tenantId   = (int) $auth->tenant_id;
-        $providerId = (int) $auth->sub;
-        $roles      = (array) ($auth->roles ?? []);
+        $providerId = self::getUserId($user);
+        $roles      = self::getUserRoles($user);
 
-        // RBAC: Only Providers and Admins can write prescriptions
         if (!in_array('Provider', $roles, true) && !in_array('Admin', $roles, true)) {
             return [
                 'success' => false,
@@ -30,8 +44,8 @@ class PrescriptionService
             ];
         }
 
-        $patientId = (int) ($input['patient_id'] ?? 0);
-        $details   = $input['details'] ?? $input['medications'] ?? null;
+        $patientId  = (int) ($input['patient_id'] ?? 0);
+        $details    = $input['details'] ?? $input['medications'] ?? null;
 
         if ($patientId <= 0 || empty($details)) {
             return [
@@ -41,30 +55,10 @@ class PrescriptionService
             ];
         }
 
-        /*
-        * Verify that the patient:
-        * 1. Exists
-        * 2. Belongs to the authenticated tenant
-        * 3. Has not been soft-deleted
-        */
-        $patient = PrescriptionRepository::findPatientByIdAndTenant(
-            $patientId,
-            $tenantId
-        );
-
-        if (!$patient) {
-            return [
-                'success' => false,
-                'code'    => 404,
-                'message' => 'Patient not found'
-            ];
-        }
-
         $jsonPayload = is_string($details) ? $details : json_encode($details);
         $encryptedData = AES::encrypt($jsonPayload);
 
-        $id = PrescriptionRepository::create([
-            'tenant_id'      => $tenantId,
+        $id = PrescriptionRepository::create($user, [
             'patient_id'     => $patientId,
             'provider_id'    => $providerId,
             'pharmacist_id'  => null,
@@ -72,7 +66,7 @@ class PrescriptionService
             'status'         => 'pending',
         ]);
 
-        $record = self::getPrescriptionDetail($auth, $id);
+        $record = self::getPrescriptionDetail($user, $id);
 
         return [
             'success' => true,
@@ -85,12 +79,11 @@ class PrescriptionService
     /**
      * Pharmacist or Admin verifies/updates prescription status.
      */
-    public static function updateStatus(object $auth, int $id, string $status): array
+    public static function updateStatus(object|array $user, int $id, string $status): array
     {
-        $tenantId = (int) $auth->tenant_id;
-        $userId   = (int) $auth->sub;
-        $roles    = (array) ($auth->roles ?? []);
-        $status   = trim(strtolower($status));
+        $userId = self::getUserId($user);
+        $roles  = self::getUserRoles($user);
+        $status = trim(strtolower($status));
 
         if (!in_array($status, self::$allowedStatuses, true)) {
             return [
@@ -100,7 +93,6 @@ class PrescriptionService
             ];
         }
 
-        // RBAC: Only Pharmacist or Admin can verify/dispense
         if (!in_array('Pharmacist', $roles, true) && !in_array('Admin', $roles, true)) {
             return [
                 'success' => false,
@@ -109,7 +101,7 @@ class PrescriptionService
             ];
         }
 
-        $existing = PrescriptionRepository::findById($id, $tenantId);
+        $existing = PrescriptionRepository::findById($user, $id);
         if (!$existing) {
             return [
                 'success' => false,
@@ -119,9 +111,9 @@ class PrescriptionService
         }
 
         $pharmacistId = in_array('Pharmacist', $roles, true) ? $userId : null;
-        PrescriptionRepository::updateStatus($id, $tenantId, $pharmacistId, $status);
+        PrescriptionRepository::updateStatus($user, $id, $pharmacistId, $status);
 
-        $record = self::getPrescriptionDetail($auth, $id);
+        $record = self::getPrescriptionDetail($user, $id);
 
         return [
             'success' => true,
@@ -134,13 +126,12 @@ class PrescriptionService
     /**
      * Get single prescription with decrypted payload.
      */
-    public static function getPrescriptionDetail(object $auth, int $id): array
+    public static function getPrescriptionDetail(object|array $user, int $id): array
     {
-        $tenantId = (int) $auth->tenant_id;
-        $userId   = (int) $auth->sub;
-        $roles    = (array) ($auth->roles ?? []);
+        $userId = self::getUserId($user);
+        $roles  = self::getUserRoles($user);
 
-        $prescription = PrescriptionRepository::findById($id, $tenantId);
+        $prescription = PrescriptionRepository::findById($user, $id);
         if (!$prescription) {
             return [
                 'success' => false,
@@ -149,7 +140,6 @@ class PrescriptionService
             ];
         }
 
-        // RBAC Scoping
         if (in_array('Patient', $roles, true) && count($roles) === 1) {
             if ((int) $prescription['patient_id'] !== $userId) {
                 return [
@@ -160,7 +150,6 @@ class PrescriptionService
             }
         }
 
-        // Decrypt AES data
         try {
             $decrypted = AES::decrypt($prescription['encrypted_data']);
             $decodedJson = json_decode($decrypted, true);
@@ -182,11 +171,10 @@ class PrescriptionService
     /**
      * List prescriptions with filters and decrypted payloads.
      */
-    public static function listPrescriptions(object $auth, array $filters): array
+    public static function listPrescriptions(object|array $user, array $filters): array
     {
-        $tenantId = (int) $auth->tenant_id;
-        $userId   = (int) $auth->sub;
-        $roles    = (array) ($auth->roles ?? []);
+        $userId = self::getUserId($user);
+        $roles  = self::getUserRoles($user);
 
         if (in_array('Patient', $roles, true) && count($roles) === 1) {
             $filters['patient_id'] = $userId;
@@ -196,7 +184,7 @@ class PrescriptionService
             }
         }
 
-        $list = PrescriptionRepository::listAll($tenantId, $filters);
+        $list = PrescriptionRepository::listAll($user, $filters);
 
         foreach ($list as &$item) {
             try {

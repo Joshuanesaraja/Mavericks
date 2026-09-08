@@ -5,10 +5,26 @@ require_once __DIR__ . '/../Repositories/NoteRepository.php';
 
 class CalendarService
 {
+    private static function getUserId(object|array $user): int
+    {
+        if (is_object($user)) {
+            return (int) ($user->sub ?? $user->id ?? 0);
+        }
+        return (int) ($user['userId'] ?? $user['user_id'] ?? $user['id'] ?? 0);
+    }
+
+    private static function getUserRoles(object|array $user): array
+    {
+        if (is_object($user)) {
+            return (array) ($user->roles ?? []);
+        }
+        return (array) ($user['roles'] ?? []);
+    }
+
     /**
      * Get appointments for a single specific date.
      */
-    public static function getAppointmentsByDate(object $auth, string $dateStr): array
+    public static function getAppointmentsByDate(object|array $user, string $dateStr): array
     {
         $dateStr = trim($dateStr);
         if (empty($dateStr) || strtotime($dateStr) === false) {
@@ -18,14 +34,14 @@ class CalendarService
         $startDate = $dateStr . ' 00:00:00';
         $endDate   = $dateStr . ' 23:59:59';
 
-        return self::fetchCalendarGrid($auth, $startDate, $endDate);
+        return self::fetchCalendarGrid($user, $startDate, $endDate);
     }
 
     /**
      * Get appointments for a date range (e.g. weekly or monthly view).
      */
     public static function getAppointmentsByRange(
-        object $auth,
+        object|array $user,
         string $startDateStr,
         string $endDateStr
     ): array {
@@ -51,34 +67,32 @@ class CalendarService
         $startDate = date('Y-m-d', $startTs) . ' 00:00:00';
         $endDate   = date('Y-m-d', $endTs) . ' 23:59:59';
 
-        return self::fetchCalendarGrid($auth, $startDate, $endDate);
+        return self::fetchCalendarGrid($user, $startDate, $endDate);
     }
 
     /**
      * Core calendar query engine with tooltip construction & RBAC.
      */
     private static function fetchCalendarGrid(
-        object $auth,
+        object|array $user,
         string $startDate,
         string $endDate
     ): array {
-        $tenantId = (int) $auth->tenant_id;
-        $userId   = (int) $auth->sub;
-        $roles    = (array) ($auth->roles ?? []);
+        $userId = self::getUserId($user);
+        $roles  = self::getUserRoles($user);
 
         $filters = [
             'date_from' => $startDate,
             'date_to'   => $endDate,
         ];
 
-        // RBAC Scoping
         if (in_array('Patient', $roles, true) && count($roles) === 1) {
             $filters['patient_id'] = $userId;
         } elseif (in_array('Provider', $roles, true) && !in_array('Admin', $roles, true)) {
             $filters['provider_id'] = $userId;
         }
 
-        $appointments = AppointmentRepository::listAll($tenantId, $filters);
+        $appointments = AppointmentRepository::listAll($user, $filters);
 
         $grid = [];
         foreach ($appointments as $item) {
@@ -86,7 +100,7 @@ class CalendarService
             $endTs   = strtotime($item['end_at']);
             $durationMinutes = max(0, (int) round(($endTs - $startTs) / 60));
 
-            $notes = NoteRepository::getByAppointment((int) $item['id'], $tenantId);
+            $notes = NoteRepository::getByAppointment($user, (int) $item['id']);
 
             $tooltip = [
                 'title'            => 'Appointment #' . $item['id'],

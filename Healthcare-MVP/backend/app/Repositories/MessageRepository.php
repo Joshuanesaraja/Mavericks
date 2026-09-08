@@ -4,18 +4,39 @@ require_once __DIR__ . '/../Config/database.php';
 
 class MessageRepository
 {
-    public static function create(array $data): int
+    /**
+     * Get dynamic tenant database connection.
+     */
+    private static function db(object|array $auth): PDO
     {
-        $db = Database::connect();
+        if (is_object($auth)) {
+            $dbName = $auth->tenant_db_name ?? null;
+            $dbUser = $auth->tenant_db_user ?? null;
+            $dbPass = $auth->tenant_db_password ?? null;
+        } else {
+            $dbName = $auth['tenant_db_name'] ?? null;
+            $dbUser = $auth['tenant_db_user'] ?? null;
+            $dbPass = $auth['tenant_db_password'] ?? null;
+        }
+
+        if (!empty($dbName)) {
+            return Database::tenant((string) $dbName, $dbUser, $dbPass);
+        }
+
+        return Database::connect();
+    }
+
+    public static function create(object|array $auth, array $data): int
+    {
+        $db = self::db($auth);
 
         $sql = 'INSERT INTO messages
-                (tenant_id, appointment_id, sender_id, receiver_id, encrypted_content)
+                (appointment_id, sender_id, receiver_id, encrypted_content)
                 VALUES
-                (:tenant_id, :appointment_id, :sender_id, :receiver_id, :encrypted_content)';
+                (:appointment_id, :sender_id, :receiver_id, :encrypted_content)';
 
         $stmt = $db->prepare($sql);
         $stmt->execute([
-            'tenant_id'         => $data['tenant_id'],
             'appointment_id'    => $data['appointment_id'],
             'sender_id'         => $data['sender_id'],
             'receiver_id'       => $data['receiver_id'],
@@ -25,9 +46,9 @@ class MessageRepository
         return (int) $db->lastInsertId();
     }
 
-    public static function getByAppointment(int $appointmentId, int $tenantId): array
+    public static function getByAppointment(object|array $auth, int $appointmentId): array
     {
-        $db = Database::connect();
+        $db = self::db($auth);
 
         $sql = 'SELECT m.*,
                        su.name AS sender_name, su.email AS sender_email,
@@ -35,14 +56,11 @@ class MessageRepository
                 FROM messages m
                 LEFT JOIN users su ON su.id = m.sender_id
                 LEFT JOIN users ru ON ru.id = m.receiver_id
-                WHERE m.appointment_id = :appointment_id AND m.tenant_id = :tenant_id
+                WHERE m.appointment_id = :appointment_id
                 ORDER BY m.created_at ASC';
 
         $stmt = $db->prepare($sql);
-        $stmt->execute([
-            'appointment_id' => $appointmentId,
-            'tenant_id'      => $tenantId,
-        ]);
+        $stmt->execute(['appointment_id' => $appointmentId]);
 
         return $stmt->fetchAll(PDO::FETCH_ASSOC);
     }
