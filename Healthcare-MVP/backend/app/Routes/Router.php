@@ -35,26 +35,47 @@ use App\Controllers\DashboardController;
 
 class Router
 {
-    private static ?PatientController $patientController = null;
 
-    private static function patientController(): PatientController
-    {
-        if (self::$patientController === null) {
-            $repository = new PatientRepository(
-                Database::connect()
-            );
-
-            $service = new PatientService(
-                $repository
-            );
-
-            self::$patientController = new PatientController(
-                $service
+private static function patientController(
+        object $auth
+    ): PatientController {
+        if (
+            empty($auth->tenant_db_name) ||
+            empty($auth->tenant_db_user) ||
+            empty($auth->tenant_db_password)
+        ) {
+            throw new RuntimeException(
+                'Tenant database credentials are missing.'
             );
         }
 
-        return self::$patientController;
+        /*
+        * IMPORTANT:
+        * Do NOT use Database::connect() here.
+        * Database::connect() would use the default/master
+        * database connection.
+        * The authenticated tenant database must be selected
+        * from the credentials attached by AuthMiddleware.
+        */
+        $tenantDb = Database::tenant(
+            (string) $auth->tenant_db_name,
+            (string) $auth->tenant_db_user,
+            (string) $auth->tenant_db_password
+        );
+
+        $repository = new PatientRepository(
+            $tenantDb
+        );
+
+        $service = new PatientService(
+            $repository
+        );
+
+        return new PatientController(
+            $service
+        );
     }
+
 
     public static function handle(
         string $method,
@@ -503,9 +524,7 @@ class Router
             }
 
             try {
-                $result = self::patientController()->index(
-                    $auth
-                );
+                $result = self::patientController($auth)->index($auth);
 
                 Response::success(
                     $result,
@@ -544,7 +563,7 @@ class Router
             }
 
             try {
-                $result = self::patientController()->show(
+                $result = self::patientController($auth)->show(
                     (int) $matches[1],
                     $auth
                 );
@@ -582,7 +601,7 @@ class Router
             }
 
             try {
-                $result = self::patientController()->store(
+                $result = self::patientController($auth)->store(
                     $decryptedInput,
                     $auth
                 );
@@ -625,7 +644,7 @@ class Router
             }
 
             try {
-                $result = self::patientController()->update(
+                $result = self::patientController($auth)->update(
                     (int) $matches[1],
                     $decryptedInput,
                     $auth
@@ -668,7 +687,7 @@ class Router
             }
 
             try {
-                $result = self::patientController()->destroy(
+                $result = self::patientController($auth)->destroy(
                     (int) $matches[1],
                     $auth
                 );
@@ -702,7 +721,7 @@ class Router
 
             if (!RoleMiddleware::handle(
                 $auth,
-                ['Admin', 'Provider', 'Nurse', 'Patient']
+                ['Provider', 'Nurse', 'Patient']
             )) {
                 return;
             }
@@ -732,7 +751,7 @@ class Router
 
             if (!RoleMiddleware::handle(
                 $auth,
-                ['Admin', 'Provider', 'Nurse', 'Patient']
+                ['Provider', 'Nurse', 'Patient']
             )) {
                 return;
             }
@@ -762,7 +781,7 @@ class Router
 
             if (!RoleMiddleware::handle(
                 $auth,
-                ['Admin', 'Provider', 'Nurse', 'Patient']
+                ['Provider', 'Nurse', 'Patient']
             )) {
                 return;
             }
@@ -792,7 +811,7 @@ class Router
 
             if (!RoleMiddleware::handle(
                 $auth,
-                ['Admin', 'Provider', 'Nurse']
+                ['Provider', 'Nurse','Patient']
             )) {
                 return;
             }
@@ -822,7 +841,7 @@ class Router
 
             if (!RoleMiddleware::handle(
                 $auth,
-                ['Admin', 'Provider', 'Nurse', 'Patient']
+                ['Provider', 'Nurse', 'Patient']
             )) {
                 return;
             }
@@ -849,7 +868,7 @@ class Router
 
             if (!RoleMiddleware::handle(
                 $auth,
-                ['Admin', 'Provider', 'Nurse', 'Patient']
+                ['Provider', 'Nurse', 'Patient']
             )) {
                 return;
             }
