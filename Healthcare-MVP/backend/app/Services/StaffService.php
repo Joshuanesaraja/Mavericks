@@ -19,21 +19,16 @@ class StaffService
         $this->repository = $repository;
     }
 
-    public function getStaff(
-        int $tenantId
-    ): array {
-        return $this->repository->findAllByTenant(
-            $tenantId
-        );
+    public function getStaff(): array
+    {
+        return $this->repository->findAll();
     }
 
     public function getStaffMember(
-        int $staffId,
-        int $tenantId
+        int $staffId
     ): array {
         $staff = $this->repository->findById(
-            $staffId,
-            $tenantId
+            $staffId
         );
 
         if (!$staff) {
@@ -46,7 +41,6 @@ class StaffService
     }
 
     public function createStaff(
-        int $tenantId,
         string $name,
         string $email,
         string $password,
@@ -96,7 +90,6 @@ class StaffService
         );
 
         $staffId = $this->repository->create(
-            $tenantId,
             $name,
             $email,
             $passwordHash,
@@ -105,14 +98,12 @@ class StaffService
         );
 
         return $this->getStaffMember(
-            $staffId,
-            $tenantId
+            $staffId
         );
     }
 
     public function updateStaff(
         int $staffId,
-        int $tenantId,
         string $name,
         string $email,
         string $staffType
@@ -130,8 +121,7 @@ class StaffService
         }
 
         $staff = $this->getStaffMember(
-            $staffId,
-            $tenantId
+            $staffId
         );
 
         $userId = (int) $staff['user_id'];
@@ -160,7 +150,6 @@ class StaffService
 
         $updated = $this->repository->update(
             $staffId,
-            $tenantId,
             $name,
             $email,
             $staffType,
@@ -174,14 +163,12 @@ class StaffService
         }
 
         return $this->getStaffMember(
-            $staffId,
-            $tenantId
+            $staffId
         );
     }
 
     public function updateStatus(
         int $staffId,
-        int $tenantId,
         string $status
     ): array {
         $status = strtolower(
@@ -199,13 +186,11 @@ class StaffService
         }
 
         $this->getStaffMember(
-            $staffId,
-            $tenantId
+            $staffId
         );
 
         if (!$this->repository->updateStatus(
             $staffId,
-            $tenantId,
             $status
         )) {
             throw new RuntimeException(
@@ -214,23 +199,19 @@ class StaffService
         }
 
         return $this->getStaffMember(
-            $staffId,
-            $tenantId
+            $staffId
         );
     }
 
     public function deleteStaff(
-        int $staffId,
-        int $tenantId
+        int $staffId
     ): void {
         $this->getStaffMember(
-            $staffId,
-            $tenantId
+            $staffId
         );
 
         if (!$this->repository->softDelete(
-            $staffId,
-            $tenantId
+            $staffId
         )) {
             throw new RuntimeException(
                 'Staff deletion failed.'

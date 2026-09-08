@@ -3,13 +3,31 @@
 require_once __DIR__ . '/../Services/StaffService.php';
 require_once __DIR__ . '/../Repositories/StaffRepository.php';
 require_once __DIR__ . '/../Helpers/Response.php';
+require_once __DIR__ . '/../Config/database.php';
 
 class StaffController
 {
-    private static function service(): StaffService
-    {
+    private static function service(
+        object $auth
+    ): StaffService {
+        if (
+            empty($auth->tenant_db_name) ||
+            empty($auth->tenant_db_user) ||
+            empty($auth->tenant_db_password)
+        ) {
+            throw new RuntimeException(
+                'Tenant database credentials are missing.'
+            );
+        }
+
+        $db = Database::tenant(
+            (string) $auth->tenant_db_name,
+            (string) $auth->tenant_db_user,
+            (string) $auth->tenant_db_password
+        );
+
         return new StaffService(
-            new StaffRepository()
+            new StaffRepository($db)
         );
     }
 
@@ -17,9 +35,8 @@ class StaffController
         object $auth
     ): void {
         try {
-            $staff = self::service()->getStaff(
-                (int) $auth->tenant_id
-            );
+            $staff =
+                self::service($auth)->getStaff();
 
             Response::success(
                 $staff,
@@ -38,10 +55,11 @@ class StaffController
         int $staffId
     ): void {
         try {
-            $staff = self::service()->getStaffMember(
-                $staffId,
-                (int) $auth->tenant_id
-            );
+            $staff =
+                self::service($auth)
+                    ->getStaffMember(
+                        $staffId
+                    );
 
             Response::success(
                 $staff,
@@ -50,7 +68,8 @@ class StaffController
         } catch (Throwable $e) {
             Response::error(
                 $e->getMessage(),
-                $e->getMessage() === 'Staff not found.'
+                $e->getMessage() ===
+                    'Staff not found.'
                     ? 404
                     : 400
             );
@@ -73,7 +92,9 @@ class StaffController
             $input['password'] ?? '';
 
         $staffType = strtolower(
-            trim($input['staff_type'] ?? '')
+            trim(
+                $input['staff_type'] ?? ''
+            )
         );
 
         if (
@@ -101,13 +122,14 @@ class StaffController
         }
 
         try {
-            $staff = self::service()->createStaff(
-                (int) $auth->tenant_id,
-                $name,
-                $email,
-                $password,
-                $staffType
-            );
+            $staff =
+                self::service($auth)
+                    ->createStaff(
+                        $name,
+                        $email,
+                        $password,
+                        $staffType
+                    );
 
             Response::success(
                 $staff,
@@ -136,7 +158,9 @@ class StaffController
         );
 
         $staffType = strtolower(
-            trim($input['staff_type'] ?? '')
+            trim(
+                $input['staff_type'] ?? ''
+            )
         );
 
         if (
@@ -163,13 +187,14 @@ class StaffController
         }
 
         try {
-            $staff = self::service()->updateStaff(
-                $staffId,
-                (int) $auth->tenant_id,
-                $name,
-                $email,
-                $staffType
-            );
+            $staff =
+                self::service($auth)
+                    ->updateStaff(
+                        $staffId,
+                        $name,
+                        $email,
+                        $staffType
+                    );
 
             Response::success(
                 $staff,
@@ -178,7 +203,8 @@ class StaffController
         } catch (Throwable $e) {
             Response::error(
                 $e->getMessage(),
-                $e->getMessage() === 'Staff not found.'
+                $e->getMessage() ===
+                    'Staff not found.'
                     ? 404
                     : 400
             );
@@ -191,7 +217,9 @@ class StaffController
         array $input
     ): void {
         $status = strtolower(
-            trim($input['status'] ?? '')
+            trim(
+                $input['status'] ?? ''
+            )
         );
 
         if ($status === '') {
@@ -203,11 +231,12 @@ class StaffController
         }
 
         try {
-            $staff = self::service()->updateStatus(
-                $staffId,
-                (int) $auth->tenant_id,
-                $status
-            );
+            $staff =
+                self::service($auth)
+                    ->updateStatus(
+                        $staffId,
+                        $status
+                    );
 
             Response::success(
                 $staff,
@@ -216,7 +245,8 @@ class StaffController
         } catch (Throwable $e) {
             Response::error(
                 $e->getMessage(),
-                $e->getMessage() === 'Staff not found.'
+                $e->getMessage() ===
+                    'Staff not found.'
                     ? 404
                     : 400
             );
@@ -228,10 +258,10 @@ class StaffController
         int $staffId
     ): void {
         try {
-            self::service()->deleteStaff(
-                $staffId,
-                (int) $auth->tenant_id
-            );
+            self::service($auth)
+                ->deleteStaff(
+                    $staffId
+                );
 
             Response::success(
                 null,
@@ -240,7 +270,8 @@ class StaffController
         } catch (Throwable $e) {
             Response::error(
                 $e->getMessage(),
-                $e->getMessage() === 'Staff not found.'
+                $e->getMessage() ===
+                    'Staff not found.'
                     ? 404
                     : 400
             );
