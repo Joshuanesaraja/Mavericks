@@ -122,6 +122,8 @@ class CommunicationService
 
     /**
      * Send an encrypted message linked to an appointment.
+     * If you are logged in as User 2, then user2 is the sender
+     * receiver_id  ← taken from the request
      */
     public static function sendMessage(object|array $user, array $input): array
     {

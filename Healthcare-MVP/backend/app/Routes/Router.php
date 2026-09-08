@@ -36,7 +36,7 @@ use App\Controllers\DashboardController;
 class Router
 {
 
-private static function patientController(
+    private static function patientController(
         object $auth
     ): PatientController {
         if (
@@ -726,14 +726,8 @@ private static function patientController(
                 return;
             }
 
-            $appointmentUser = [
-                'userId'   => (int) ($auth->sub ?? 0),
-                'tenantId' => (int) ($auth->tenant_id ?? 0),
-                'roles'    => (array) ($auth->roles ?? [])
-            ];
-
             AppointmentController::create(
-                $appointmentUser,
+                $auth,
                 $decryptedInput
             );
 
@@ -756,14 +750,8 @@ private static function patientController(
                 return;
             }
 
-            $appointmentUser = [
-                'userId'   => (int) ($auth->sub ?? 0),
-                'tenantId' => (int) ($auth->tenant_id ?? 0),
-                'roles'    => (array) ($auth->roles ?? [])
-            ];
-
             AppointmentController::update(
-                $appointmentUser,
+                $auth,
                 $decryptedInput
             );
 
@@ -786,14 +774,8 @@ private static function patientController(
                 return;
             }
 
-            $appointmentUser = [
-                'userId'   => (int) ($auth->sub ?? 0),
-                'tenantId' => (int) ($auth->tenant_id ?? 0),
-                'roles'    => (array) ($auth->roles ?? [])
-            ];
-
             AppointmentController::cancel(
-                $appointmentUser,
+                $auth,
                 $decryptedInput
             );
 
@@ -811,19 +793,13 @@ private static function patientController(
 
             if (!RoleMiddleware::handle(
                 $auth,
-                ['Provider', 'Nurse','Patient']
+                ['Provider', 'Nurse', 'Patient']
             )) {
                 return;
             }
 
-            $appointmentUser = [
-                'userId'   => (int) ($auth->sub ?? 0),
-                'tenantId' => (int) ($auth->tenant_id ?? 0),
-                'roles'    => (array) ($auth->roles ?? [])
-            ];
-
             AppointmentController::updateStatus(
-                $appointmentUser,
+                $auth,
                 $decryptedInput
             );
 
@@ -846,13 +822,7 @@ private static function patientController(
                 return;
             }
 
-            $appointmentUser = [
-                'userId'   => (int) ($auth->sub ?? 0),
-                'tenantId' => (int) ($auth->tenant_id ?? 0),
-                'roles'    => (array) ($auth->roles ?? [])
-            ];
-
-            AppointmentController::upcoming($appointmentUser);
+            AppointmentController::upcoming($auth);
 
             return;
         }
@@ -873,13 +843,7 @@ private static function patientController(
                 return;
             }
 
-            $appointmentUser = [
-                'userId'   => (int) ($auth->sub ?? 0),
-                'tenantId' => (int) ($auth->tenant_id ?? 0),
-                'roles'    => (array) ($auth->roles ?? [])
-            ];
-
-            AppointmentController::detail($appointmentUser);
+            AppointmentController::detail($auth);
 
             return;
         }
@@ -900,13 +864,7 @@ private static function patientController(
                 return;
             }
 
-            $appointmentUser = [
-                'userId'   => (int) ($auth->sub ?? 0),
-                'tenantId' => (int) ($auth->tenant_id ?? 0),
-                'roles'    => (array) ($auth->roles ?? [])
-            ];
-
-            AppointmentController::list($appointmentUser);
+            AppointmentController::list($auth);
 
             return;
         }
@@ -1253,7 +1211,7 @@ private static function patientController(
         // POST /billing/invoices
         if (
             $method === 'POST' &&
-            $request === 'billing/invoices'
+            ($request === 'billing/invoices' || $request === 'invoices')
         ) {
             $auth = AuthMiddleware::handle();
 
@@ -1276,7 +1234,7 @@ private static function patientController(
         // GET /billing/invoices
         if (
             $method === 'GET' &&
-            ($request === 'billing/invoices' || $request === 'billing/invoices/list')
+            ($request === 'billing/invoices' || $request === 'billing/invoices/list' || $request === 'invoices')
         ) {
             $auth = AuthMiddleware::handle();
 

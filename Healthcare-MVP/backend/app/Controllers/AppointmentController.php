@@ -13,7 +13,7 @@ class AppointmentController
     /**
      * POST /appointments/create or POST /appointments
      */
-    public static function create(array $user, array $input): void
+    public static function create(object|array $user, array $input): void
     {
         try {
             $result = AppointmentService::createAppointment($user, $input);
@@ -38,7 +38,7 @@ class AppointmentController
     /**
      * PUT /appointments/update or POST /appointments/update
      */
-    public static function update(array $user, array $input): void
+    public static function update(object|array $user, array $input): void
     {
         $id = (int) ($_GET['id'] ?? $input['id'] ?? 0);
 
@@ -74,7 +74,7 @@ class AppointmentController
     /**
      * POST /appointments/cancel or PUT /appointments/cancel
      */
-    public static function cancel(array $user, array $input): void
+    public static function cancel(object|array $user, array $input): void
     {
         $id = (int) ($_GET['id'] ?? $input['id'] ?? 0);
         $reason = $input['reason'] ?? $_GET['reason'] ?? null;
@@ -111,7 +111,7 @@ class AppointmentController
     /**
      * POST /appointments/status or PUT /appointments/status
      */
-    public static function updateStatus(array $user, array $input): void
+    public static function updateStatus(object|array $user, array $input): void
     {
         $id = (int) ($_GET['id'] ?? $input['id'] ?? 0);
         $status = trim($input['status'] ?? $_GET['status'] ?? '');
@@ -151,7 +151,7 @@ class AppointmentController
     /**
      * GET /appointments/upcoming
      */
-    public static function upcoming(array $user): void
+    public static function upcoming(object|array $user): void
     {
         try {
             $result = AppointmentService::getUpcomingAppointments($user);
@@ -176,7 +176,7 @@ class AppointmentController
     /**
      * GET /appointments/detail
      */
-    public static function detail(array $user): void
+    public static function detail(object|array $user): void
     {
         $id = (int) ($_GET['id'] ?? 0);
 
@@ -211,7 +211,7 @@ class AppointmentController
     /**
      * GET /appointments or GET /appointments/list
      */
-    public static function list(array $user): void
+    public static function list(object|array $user): void
     {
         try {
             $result = AppointmentService::listAppointments(
