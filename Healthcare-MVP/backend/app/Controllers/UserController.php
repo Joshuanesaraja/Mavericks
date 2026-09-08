@@ -1,41 +1,272 @@
 <?php
 
-require_once __DIR__ . '/../Helpers/Response.php';
 require_once __DIR__ . '/../Services/UserService.php';
+require_once __DIR__ . '/../Helpers/Response.php';
 
 class UserController
 {
     public static function profile(object $auth): void
     {
-        $userId = (int) $auth->sub;
-        $tenantId = (int) $auth->tenant_id;
+        try {
+            $user = UserService::getProfile($auth);
 
-        $user = UserService::getProfile(
-            $userId,
-            $tenantId
-        );
+            if (!$user) {
+                Response::error(
+                    'User not found',
+                    404
+                );
+                return;
+            }
 
-        if ($user === null) {
-            Response::error('User not found', 404);
+            Response::success(
+                $user,
+                'Profile fetched successfully'
+            );
+        } catch (Throwable $e) {
+            Response::error(
+                $e->getMessage(),
+                400
+            );
+        }
+    }
+
+    public static function index(object $auth): void
+    {
+        try {
+            Response::success(
+                UserService::getUsers($auth),
+                'Users fetched successfully'
+            );
+        } catch (Throwable $e) {
+            Response::error(
+                $e->getMessage(),
+                400
+            );
+        }
+    }
+
+    public static function show(
+        object $auth,
+        int $userId
+    ): void {
+        try {
+            $user = UserService::getUser(
+                $auth,
+                $userId
+            );
+
+            if (!$user) {
+                Response::error(
+                    'User not found',
+                    404
+                );
+                return;
+            }
+
+            Response::success(
+                $user,
+                'User fetched successfully'
+            );
+        } catch (Throwable $e) {
+            Response::error(
+                $e->getMessage(),
+                400
+            );
+        }
+    }
+
+    public static function store(
+        object $auth,
+        array $input
+    ): void {
+        $name = trim($input['name'] ?? '');
+        $email = trim($input['email'] ?? '');
+        $password = $input['password'] ?? '';
+        $role = trim($input['role'] ?? '');
+
+        if (
+            $name === '' ||
+            $email === '' ||
+            $password === '' ||
+            $role === ''
+        ) {
+            Response::error(
+                'Name, email, password and role are required',
+                400
+            );
             return;
         }
 
-        Response::success([
-            'user' => $user,
-            'roles' => $auth->roles
-        ]);
+        if (!filter_var(
+            $email,
+            FILTER_VALIDATE_EMAIL
+        )) {
+            Response::error(
+                'Invalid email address',
+                400
+            );
+            return;
+        }
+
+        try {
+            $user = UserService::createUser(
+                $auth,
+                $name,
+                $email,
+                $password,
+                $role
+            );
+
+            Response::success(
+                $user,
+                'User created successfully',
+                201
+            );
+        } catch (Throwable $e) {
+            Response::error(
+                $e->getMessage(),
+                400
+            );
+        }
     }
 
-    // Change Password
-    
+    public static function update(
+        object $auth,
+        int $userId,
+        array $input
+    ): void {
+        $name = trim($input['name'] ?? '');
+        $email = trim($input['email'] ?? '');
+
+        if ($name === '' || $email === '') {
+            Response::error(
+                'Name and email are required',
+                400
+            );
+            return;
+        }
+
+        if (!filter_var(
+            $email,
+            FILTER_VALIDATE_EMAIL
+        )) {
+            Response::error(
+                'Invalid email address',
+                400
+            );
+            return;
+        }
+
+        try {
+            $user = UserService::updateUser(
+                $auth,
+                $userId,
+                $name,
+                $email
+            );
+
+            Response::success(
+                $user,
+                'User updated successfully'
+            );
+        } catch (Throwable $e) {
+            Response::error(
+                $e->getMessage(),
+                $e->getMessage() === 'User not found'
+                    ? 404
+                    : 400
+            );
+        }
+    }
+
+    public static function assignRole(
+        object $auth,
+        int $userId,
+        array $input
+    ): void {
+        $role = trim($input['role'] ?? '');
+
+        if ($role === '') {
+            Response::error(
+                'Role is required',
+                400
+            );
+            return;
+        }
+
+        try {
+            $user = UserService::assignRole(
+                $auth,
+                $userId,
+                $role
+            );
+
+            Response::success(
+                $user,
+                'Role assigned successfully'
+            );
+        } catch (Throwable $e) {
+            Response::error(
+                $e->getMessage(),
+                $e->getMessage() === 'User not found'
+                    ? 404
+                    : 400
+            );
+        }
+    }
+
+    public static function updateStatus(
+        object $auth,
+        int $userId,
+        array $input
+    ): void {
+        $status = strtolower(
+            trim($input['status'] ?? '')
+        );
+
+        if ($status === '') {
+            Response::error(
+                'Status is required',
+                400
+            );
+            return;
+        }
+
+        try {
+            $user = UserService::updateStatus(
+                $auth,
+                $userId,
+                $status
+            );
+
+            Response::success(
+                $user,
+                'User status updated successfully'
+            );
+        } catch (Throwable $e) {
+            Response::error(
+                $e->getMessage(),
+                $e->getMessage() === 'User not found'
+                    ? 404
+                    : 400
+            );
+        }
+    }
+
     public static function changePassword(
         object $auth,
         array $input
     ): void {
-        $currentPassword = $input['current_password'] ?? '';
-        $newPassword = $input['new_password'] ?? '';
+        $currentPassword =
+            $input['current_password'] ?? '';
 
-        if ($currentPassword === '' || $newPassword === '') {
+        $newPassword =
+            $input['new_password'] ?? '';
+
+        if (
+            $currentPassword === '' ||
+            $newPassword === ''
+        ) {
             Response::error(
                 'Current password and new password are required',
                 400
@@ -43,26 +274,9 @@ class UserController
             return;
         }
 
-        if (strlen($newPassword) < 8) {
-            Response::error(
-                'New password must be at least 8 characters',
-                400
-            );
-            return;
-        }
-
-        if ($currentPassword === $newPassword) {
-            Response::error(
-                'New password must be different from current password',
-                400
-            );
-            return;
-        }
-
         try {
             UserService::changePassword(
-                (int) $auth->sub,
-                (int) $auth->tenant_id,
+                $auth,
                 $currentPassword,
                 $newPassword
             );

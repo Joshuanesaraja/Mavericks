@@ -2,7 +2,11 @@
 .env
 
 # PHP dependencies
+vendor/
+# PHP dependencies
+vendor/
 Healthcare-MVP/backend/vendor/
+composer.phar
 
 # Node dependencies
 node_modules/
@@ -10,7 +14,6 @@ node_modules/
 # Runtime files
 Healthcare-MVP/backend/storage/logs/*
 Healthcare-MVP/backend/storage/sessions/*
-Healthcare-MVP/backend/storage/rate_limit/*
 
 # VS Code
 .vscode/
@@ -18,3 +21,5 @@ Healthcare-MVP/backend/storage/rate_limit/*
 # OS files
 .DS_Store
 Thumbs.db
+# Rate limit runtime files
+Healthcare-MVP/backend/storage/rate_limit/*
