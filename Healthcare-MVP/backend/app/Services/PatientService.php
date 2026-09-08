@@ -17,9 +17,14 @@ class PatientService
         $this->repository = $repository;
     }
 
+    /**
+     * Create a patient.
+     *
+     * The authenticated tenant database is already selected
+     * before this service is called.
+     */
     public function create(
-        int $tenantId,
-        int $userId,
+        ?int $userId,
         string $data
     ): int {
         if (trim($data) === '') {
@@ -31,39 +36,29 @@ class PatientService
         /*
          * Encrypt patient data before storing it.
          *
-         * The database will NEVER receive the
-         * plaintext patient data.
+         * Plaintext patient data must never be stored
+         * in the database.
          */
-        $encryptedData = \AES::encrypt(
-            $data
-        );
+        $encryptedData = \AES::encrypt($data);
 
-        /*
-         * Provider/Nurse is not the patient's
-         * user account.
-         *
-         * Tenant architecture remains unchanged.
-         */
         return $this->repository->create(
-            $tenantId,
             $userId,
             $encryptedData
         );
     }
 
-    public function getAll(
-        int $tenantId
-    ): array {
-        $patients = $this->repository->findAll(
-            $tenantId
-        );
+    /**
+     * Get all active patients.
+     */
+    public function getAll(): array
+    {
+        $patients = $this->repository->findAll();
 
         /*
-         * Decrypt patient data before returning
-         * it to the controller/API.
+         * Decrypt patient data only when returning
+         * it to the API.
          */
         foreach ($patients as &$patient) {
-
             if (
                 isset($patient['encrypted_data']) &&
                 $patient['encrypted_data'] !== ''
@@ -80,13 +75,14 @@ class PatientService
         return $patients;
     }
 
+    /**
+     * Get one patient.
+     */
     public function getById(
-        int $patientId,
-        int $tenantId
+        int $patientId
     ): array {
         $patient = $this->repository->findById(
-            $patientId,
-            $tenantId
+            $patientId
         );
 
         if (!$patient) {
@@ -96,8 +92,8 @@ class PatientService
         }
 
         /*
-         * Decrypt only after confirming that
-         * the patient belongs to the tenant.
+         * Decrypt only after the patient has been
+         * successfully found in the current tenant DB.
          */
         if (
             isset($patient['encrypted_data']) &&
@@ -112,9 +108,11 @@ class PatientService
         return $patient;
     }
 
+    /**
+     * Update a patient.
+     */
     public function update(
         int $patientId,
-        int $tenantId,
         string $data
     ): bool {
         if (trim($data) === '') {
@@ -124,44 +122,33 @@ class PatientService
         }
 
         /*
-         * First verify that the patient belongs
-         * to the current tenant.
+         * Verify the patient exists in the current
+         * tenant database before updating.
          */
-        $this->getById(
-            $patientId,
-            $tenantId
-        );
+        $this->getById($patientId);
 
-        /*
-         * Encrypt the new patient data before
-         * sending it to the repository.
-         */
-        $encryptedData = \AES::encrypt(
-            $data
-        );
+        $encryptedData = \AES::encrypt($data);
 
         return $this->repository->update(
             $patientId,
-            $tenantId,
             $encryptedData
         );
     }
 
+    /**
+     * Soft-delete a patient.
+     */
     public function delete(
-        int $patientId,
-        int $tenantId
+        int $patientId
     ): bool {
         /*
-         * Tenant architecture remains unchanged.
+         * Verify the patient exists in the current
+         * tenant database before deleting.
          */
-        $this->getById(
-            $patientId,
-            $tenantId
-        );
+        $this->getById($patientId);
 
         return $this->repository->softDelete(
-            $patientId,
-            $tenantId
+            $patientId
         );
     }
 }

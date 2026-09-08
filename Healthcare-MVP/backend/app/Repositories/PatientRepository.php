@@ -3,6 +3,7 @@
 namespace App\Repositories;
 
 use PDO;
+use RuntimeException;
 
 class PatientRepository
 {
@@ -13,26 +14,27 @@ class PatientRepository
         $this->db = $db;
     }
 
+    /**
+     * Create a patient inside the current tenant database.
+     *
+     * Tenant isolation is provided by the database connection itself.
+     */
     public function create(
-        int $tenantId,
         ?int $userId,
         string $encryptedData
     ): int {
         $stmt = $this->db->prepare("
             INSERT INTO patients (
-                tenant_id,
                 user_id,
                 encrypted_data
             )
             VALUES (
-                :tenant_id,
                 :user_id,
                 :encrypted_data
             )
         ");
 
         $stmt->execute([
-            ':tenant_id' => $tenantId,
             ':user_id' => $userId,
             ':encrypted_data' => $encryptedData
         ]);
@@ -40,66 +42,59 @@ class PatientRepository
         return (int) $this->db->lastInsertId();
     }
 
-    public function findAll(
-        int $tenantId
-    ): array {
-        $stmt = $this->db->prepare("
+    /**
+     * Get all active patients from the current tenant database.
+     */
+    public function findAll(): array
+    {
+        $stmt = $this->db->query("
             SELECT
                 id,
-                tenant_id,
                 user_id,
                 encrypted_data,
                 created_at,
                 updated_at
             FROM patients
-            WHERE tenant_id = :tenant_id
-              AND deleted_at IS NULL
+            WHERE deleted_at IS NULL
             ORDER BY id DESC
         ");
 
-        $stmt->execute([
-            ':tenant_id' => $tenantId
-        ]);
-
-        return $stmt->fetchAll(
-            PDO::FETCH_ASSOC
-        );
+        return $stmt->fetchAll(PDO::FETCH_ASSOC);
     }
 
+    /**
+     * Find one active patient in the current tenant database.
+     */
     public function findById(
-        int $patientId,
-        int $tenantId
+        int $patientId
     ): ?array {
         $stmt = $this->db->prepare("
             SELECT
                 id,
-                tenant_id,
                 user_id,
                 encrypted_data,
                 created_at,
                 updated_at
             FROM patients
             WHERE id = :patient_id
-              AND tenant_id = :tenant_id
               AND deleted_at IS NULL
             LIMIT 1
         ");
 
         $stmt->execute([
-            ':patient_id' => $patientId,
-            ':tenant_id' => $tenantId
+            ':patient_id' => $patientId
         ]);
 
-        $patient = $stmt->fetch(
-            PDO::FETCH_ASSOC
-        );
+        $patient = $stmt->fetch(PDO::FETCH_ASSOC);
 
         return $patient ?: null;
     }
 
+    /**
+     * Update an active patient.
+     */
     public function update(
         int $patientId,
-        int $tenantId,
         string $encryptedData
     ): bool {
         $stmt = $this->db->prepare("
@@ -108,34 +103,34 @@ class PatientRepository
                 encrypted_data = :encrypted_data,
                 updated_at = CURRENT_TIMESTAMP
             WHERE id = :patient_id
-              AND tenant_id = :tenant_id
               AND deleted_at IS NULL
         ");
 
         $stmt->execute([
             ':encrypted_data' => $encryptedData,
-            ':patient_id' => $patientId,
-            ':tenant_id' => $tenantId
+            ':patient_id' => $patientId
         ]);
 
         return $stmt->rowCount() > 0;
     }
 
+    /**
+     * Soft-delete a patient.
+     */
     public function softDelete(
-        int $patientId,
-        int $tenantId
+        int $patientId
     ): bool {
         $stmt = $this->db->prepare("
             UPDATE patients
-            SET deleted_at = CURRENT_TIMESTAMP
+            SET
+                deleted_at = CURRENT_TIMESTAMP,
+                updated_at = CURRENT_TIMESTAMP
             WHERE id = :patient_id
-              AND tenant_id = :tenant_id
               AND deleted_at IS NULL
         ");
 
         $stmt->execute([
-            ':patient_id' => $patientId,
-            ':tenant_id' => $tenantId
+            ':patient_id' => $patientId
         ]);
 
         return $stmt->rowCount() > 0;
