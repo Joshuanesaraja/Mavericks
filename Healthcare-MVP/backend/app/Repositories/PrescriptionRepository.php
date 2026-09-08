@@ -19,11 +19,17 @@ class PrescriptionRepository
             $dbPass = $auth['tenant_db_password'] ?? null;
         }
 
-        if (!empty($dbName)) {
-            return Database::tenant((string) $dbName, $dbUser, $dbPass);
+        if (empty($dbName)) {
+            throw new RuntimeException(
+                'Tenant database is not configured.'
+            );
         }
 
-        return Database::connect();
+        return Database::tenant(
+            (string) $dbName,
+            $dbUser,
+            $dbPass
+        );
     }
 
     /**
