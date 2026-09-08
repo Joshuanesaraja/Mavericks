@@ -9,6 +9,50 @@ use Exception;
 class DashboardController
 {
     /**
+     * Create DashboardService using
+     * the authenticated tenant database.
+     */
+    private static function service(object $auth): DashboardService
+    {
+        $dbName = (string) (
+            $auth->tenant_db_name ?? ''
+        );
+
+        $dbHost = (string) (
+            $auth->tenant_db_host ?? ''
+        );
+
+        $dbUser = (string) (
+            $auth->tenant_db_user ?? ''
+        );
+
+        $dbPassword = (string) (
+            $auth->tenant_db_password ?? ''
+        );
+
+        if (
+            $dbName === '' ||
+            $dbHost === '' ||
+            $dbUser === '' ||
+            $dbPassword === ''
+        ) {
+            throw new Exception(
+                'Tenant database credentials are missing.'
+            );
+        }
+
+        $db = \Database::tenant(
+            $dbName,
+            $dbUser,
+            $dbPassword
+        );
+
+        return new DashboardService(
+            new DashboardRepository($db)
+        );
+    }
+
+    /**
      * GET /dashboard
      */
     public static function dashboard(
@@ -27,11 +71,7 @@ class DashboardController
                 $auth->roles ?? []
             );
 
-            $service = new DashboardService(
-                new DashboardRepository(
-                    \Database::connect()
-                )
-            );
+            $service = self::service($auth);
 
             $dashboard = $service->getDashboard(
                 $tenantId,
@@ -70,11 +110,7 @@ class DashboardController
                 $auth->roles ?? []
             );
 
-            $service = new DashboardService(
-                new DashboardRepository(
-                    \Database::connect()
-                )
-            );
+            $service = self::service($auth);
 
             $report = $service->getAppointmentReport(
                 $tenantId,
@@ -113,11 +149,7 @@ class DashboardController
                 $auth->roles ?? []
             );
 
-            $service = new DashboardService(
-                new DashboardRepository(
-                    \Database::connect()
-                )
-            );
+            $service = self::service($auth);
 
             $report = $service->getPrescriptionReport(
                 $tenantId,
@@ -148,11 +180,7 @@ class DashboardController
                 $auth->tenant_id ?? 0
             );
 
-            $service = new DashboardService(
-                new DashboardRepository(
-                    \Database::connect()
-                )
-            );
+            $service = self::service($auth);
 
             $analytics = $service->getTenantAnalytics(
                 $tenantId

@@ -19,10 +19,11 @@ class DashboardService
      * Get the main dashboard summary.
      *
      * Admin:
-     *   - Tenant-wide data
+     *   Tenant-wide data.
      *
      * Provider:
-     *   - Provider-specific patient, appointment and prescription data
+     *   Provider-specific patient,
+     *   appointment and prescription data.
      */
     public function getDashboard(
         int $tenantId,
@@ -49,19 +50,16 @@ class DashboardService
 
             'total_patients' =>
                 $this->repository->getTotalPatients(
-                    $tenantId,
                     $providerId
                 ),
 
             'appointments' =>
                 $this->repository->getAppointmentStatistics(
-                    $tenantId,
                     $providerId
                 ),
 
             'prescriptions' =>
                 $this->repository->getPrescriptionSummary(
-                    $tenantId,
                     $providerId
                 )
         ];
@@ -94,16 +92,16 @@ class DashboardService
             'tenant_id' => $tenantId,
 
             'statistics' =>
-                $this->repository->getAppointmentStatistics(
-                    $tenantId,
-                    $providerId
-                ),
+                $this->repository
+                    ->getAppointmentStatistics(
+                        $providerId
+                    ),
 
             'status_breakdown' =>
-                $this->repository->getAppointmentStatusBreakdown(
-                    $tenantId,
-                    $providerId
-                )
+                $this->repository
+                    ->getAppointmentStatusBreakdown(
+                        $providerId
+                    )
         ];
     }
 
@@ -134,23 +132,21 @@ class DashboardService
             'tenant_id' => $tenantId,
 
             'summary' =>
-                $this->repository->getPrescriptionSummary(
-                    $tenantId,
-                    $providerId
-                ),
+                $this->repository
+                    ->getPrescriptionSummary(
+                        $providerId
+                    ),
 
             'status_breakdown' =>
-                $this->repository->getPrescriptionStatusBreakdown(
-                    $tenantId,
-                    $providerId
-                )
+                $this->repository
+                    ->getPrescriptionStatusBreakdown(
+                        $providerId
+                    )
         ];
     }
 
     /**
      * Get tenant-wide analytics.
-     *
-     * Only aggregate information is returned.
      */
     public function getTenantAnalytics(
         int $tenantId
@@ -161,9 +157,16 @@ class DashboardService
             );
         }
 
-        return $this->repository->getTenantAnalytics(
-            $tenantId
-        );
+        $analytics =
+            $this->repository->getTenantAnalytics();
+
+        /*
+         * Tenant ID is Master DB metadata.
+         * It is not a column in the tenant tables.
+         */
+        $analytics['tenant_id'] = $tenantId;
+
+        return $analytics;
     }
 
     /**
@@ -176,12 +179,22 @@ class DashboardService
         array $roles,
         int $userId
     ): ?int {
-        if (in_array('Admin', $roles, true)) {
+        if (
+            in_array(
+                'Admin',
+                $roles,
+                true
+            )
+        ) {
             return null;
         }
 
         if (
-            in_array('Provider', $roles, true) &&
+            in_array(
+                'Provider',
+                $roles,
+                true
+            ) &&
             $userId > 0
         ) {
             return $userId;
