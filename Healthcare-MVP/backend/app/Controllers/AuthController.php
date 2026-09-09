@@ -917,6 +917,31 @@ class AuthController
                 ]);
 
                 /*
+                 * Clean up old unusable refresh tokens.
+                 *
+                 * Keep the latest 25 refresh tokens.
+                 * Delete older tokens only when they are expired or revoked.
+                */
+
+                $cleanupStmt = $db->prepare(
+                    'DELETE FROM refresh_tokens
+                     WHERE id NOT IN (
+                            SELECT id
+                            FROM (
+                                SELECT id
+                                FROM refresh_tokens
+                                ORDER BY created_at DESC
+                                LIMIT 25
+                            ) AS latest_tokens
+                        )
+                     AND (expires_at < NOW() 
+                        OR revoked = TRUE
+                    )'
+                );
+
+                $cleanupStmt->execute();
+
+                /*
              * Commit token rotation.
              */
                 $db->commit();
