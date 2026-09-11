@@ -176,6 +176,25 @@ class CalendarService
             ];
         }
 
+        /*
+     * RBAC:
+     * Admin can view availability for any provider.
+     * Provider can view only their own availability.
+     */
+        $userId = self::getUserId($auth);
+        $roles = self::getUserRoles($auth);
+
+        $isAdmin = in_array('Admin', $roles, true);
+        $isProvider = in_array('Provider', $roles, true);
+
+        if ($isProvider && !$isAdmin && $providerId !== $userId) {
+            return [
+                'success' => false,
+                'code' => 403,
+                'message' => 'You can only view your own availability'
+            ];
+        }
+
         $appointments = AppointmentRepository::listAll(
             $auth,
             [
