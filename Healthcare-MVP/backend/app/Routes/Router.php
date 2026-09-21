@@ -1204,41 +1204,47 @@ class Router
             return;
         }
 
-    if ($method === 'GET' && $request === 'calendar/today') {
-        $auth = AuthMiddleware::handle();
+        if (
+            $method === 'GET' &&
+            $request === 'calendar/today'
+        ) {
+            $auth = AuthMiddleware::handle();
+            if ($auth === null) {
+                return;
+            }
 
-        if ($auth === null) {
+            if (!RoleMiddleware::handle(
+                $auth,
+                ['Admin', 'Provider', 'Nurse', 'Patient', 'Pharmacist']
+            )) {
+                return;
+            }
+
+            CalendarController::getToday($auth);
+
             return;
         }
 
-        if (!RoleMiddleware::handle(
-            $auth,
-            ['Admin', 'Provider', 'Nurse', 'Patient', 'Pharmacist']
-        )) {
+        if (
+            $method === 'GET' &&
+            $request === 'calendar/availability'
+        ) {
+            $auth = AuthMiddleware::handle();
+            if ($auth === null) {
+                return;
+            }
+
+            if (!RoleMiddleware::handle(
+                $auth,
+                ['Admin', 'Provider', 'Nurse', 'Patient', 'Pharmacist']
+            )) {
+                return;
+            }
+
+            CalendarController::getAvailability($auth);
+
             return;
         }
-
-        CalendarController::getToday($auth);
-        return;
-    }
-
-    if ($method === 'GET' && $request === 'calendar/availability') {
-    $auth = AuthMiddleware::handle();
-
-    if ($auth === null) {
-        return;
-    }
-
-    if (!RoleMiddleware::handle(
-        $auth,
-        ['Admin', 'Provider', 'Nurse', 'Patient', 'Pharmacist']
-    )) {
-        return;
-    }
-
-    CalendarController::getAvailability($auth);
-    return;
-    }
 
         // =========================================================
         // MODULE 8: BILLING & PAYMENT

@@ -157,14 +157,39 @@ class CalendarService
             ];
         }
 
+        $dateObject = DateTime::createFromFormat('!Y-m-d', $date);
+        $dateErrors = DateTime::getLastErrors();
+
         if (
-            !$date ||
-            !DateTime::createFromFormat('Y-m-d', $date)
+            !$dateObject ||
+            ($dateErrors !== false && ($dateErrors['warning_count'] > 0 || $dateErrors['error_count'] > 0)) ||
+            $dateObject->format('Y-m-d') !== $date
         ) {
             return [
                 'success' => false,
                 'code' => 400,
                 'message' => 'Valid date is required'
+            ];
+        }
+
+        $startTimeObject = DateTime::createFromFormat('!H:i', $startTime);
+        $startTimeErrors = DateTime::getLastErrors();
+        $endTimeObject = DateTime::createFromFormat('!H:i', $endTime);
+        $endTimeErrors = DateTime::getLastErrors();
+
+        if (
+            !$startTimeObject ||
+            !$endTimeObject ||
+            ($startTimeErrors !== false && ($startTimeErrors['warning_count'] > 0 || $startTimeErrors['error_count'] > 0)) ||
+            ($endTimeErrors !== false && ($endTimeErrors['warning_count'] > 0 || $endTimeErrors['error_count'] > 0)) ||
+            $startTimeObject->format('H:i') !== $startTime ||
+            $endTimeObject->format('H:i') !== $endTime ||
+            $startTimeObject >= $endTimeObject
+        ) {
+            return [
+                'success' => false,
+                'code' => 400,
+                'message' => 'Valid start_time and end_time are required, and end_time must be later than start_time'
             ];
         }
 
@@ -177,10 +202,10 @@ class CalendarService
         }
 
         /*
-     * RBAC:
-     * Admin can view availability for any provider.
-     * Provider can view only their own availability.
-     */
+         * RBAC:
+         * Admin can view availability for any provider.
+         * Provider can view only their own availability.
+         */
         $userId = self::getUserId($auth);
         $roles = self::getUserRoles($auth);
 
