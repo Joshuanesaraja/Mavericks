@@ -99,4 +99,56 @@ class CalendarController
             );
         }
     }
+    public static function getToday(object $auth): void
+    {
+        try {
+            $result = CalendarService::getAppointmentsByDate(
+                $auth,
+                date('Y-m-d')
+            );
+
+            if ($result['success']) {
+                Response::success(
+                    $result['data'] ?? null,
+                    $result['message'] ?? 'Today appointments fetched successfully',
+                    $result['code'] ?? 200
+                );
+            } else {
+                Response::error(
+                    $result['message'] ?? 'Failed to fetch today appointments',
+                    $result['code'] ?? 400
+                );
+            }
+        } catch (Throwable $e) {
+            Response::error(
+                $e->getMessage(),
+                400
+            );
+        }
+    }
+
+    public static function getAvailability(object $auth): void
+    {
+        try {
+            $result = CalendarService::getAvailability($auth);
+
+            if ($result['success']) {
+                Response::success(
+                    $result['data'] ?? null,
+                    $result['message'] ?? 'Provider availability retrieved successfully',
+                    $result['code'] ?? 200
+                );
+            } else {
+                Response::error(
+                    $result['message'] ?? 'Failed to retrieve provider availability',
+                    $result['code'] ?? 400
+                );
+            }
+        } catch (Throwable $e) {
+            Response::error(
+                $e->getMessage(),
+                400
+            );
+        }
+    }
 }
