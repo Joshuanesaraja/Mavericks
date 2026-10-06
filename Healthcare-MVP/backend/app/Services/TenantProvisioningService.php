@@ -256,6 +256,34 @@ class TenantProvisioningService
                     ON DELETE CASCADE
             ) ENGINE=InnoDB",
 
+            "CREATE TABLE IF NOT EXISTS notifications (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                recipient_id INT NOT NULL,
+                type VARCHAR(50) NOT NULL DEFAULT 'system',
+                title VARCHAR(150) NOT NULL,
+                message TEXT NOT NULL,
+                reference_type VARCHAR(50) NULL,
+                reference_id INT NULL,
+                is_read TINYINT(1) NOT NULL DEFAULT 0,
+                created_at TIMESTAMP
+                    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                read_at DATETIME NULL,
+                INDEX idx_notifications_recipient (
+                    recipient_id
+                ),
+                INDEX idx_notifications_unread (
+                    recipient_id,
+                    is_read
+                ),
+                INDEX idx_notifications_created (
+                    created_at
+                ),
+                INDEX idx_notifications_reference (
+                    reference_type,
+                    reference_id
+                )
+            ) ENGINE=InnoDB",
+            
             /*
              * Prescriptions
              */

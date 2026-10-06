@@ -1,6 +1,7 @@
 <?php
 
 require_once __DIR__ . '/../Repositories/AppointmentRepository.php';
+require_once __DIR__ . '/NotificationService.php';
 
 class AppointmentService
 {
@@ -109,7 +110,12 @@ class AppointmentService
         ]);
 
         $appointment = AppointmentRepository::findById($user, $appointmentId);
-
+        if ($appointment) {
+            NotificationService::appointmentCreated(
+                $user,
+                $appointment
+            );
+        }
         return [
             'success' => true,
             'code'    => 201,
