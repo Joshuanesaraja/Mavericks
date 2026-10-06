@@ -192,6 +192,24 @@ class Router
             return;
         }
 
+        // get all providers
+
+        if ($method === 'GET' && $request === 'providers') {
+            $auth = AuthMiddleware::handle();
+
+            if (
+                !RoleMiddleware::handle(
+                    $auth,
+                    ['Provider', 'Nurse', 'Patient']
+                )
+            ) {
+                return;
+            }
+
+            UserController::providers($auth);
+            return;
+        }
+
         // Admin: get all users
         if ($method === 'GET' && $request === 'users') {
 
@@ -840,7 +858,7 @@ class Router
 
             if (!RoleMiddleware::handle(
                 $auth,
-                ['Provider', 'Nurse', 'Patient']
+                ['Admin', 'Provider', 'Nurse', 'Patient']
             )) {
                 return;
             }

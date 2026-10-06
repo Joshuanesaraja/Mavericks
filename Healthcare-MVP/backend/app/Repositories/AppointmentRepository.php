@@ -94,6 +94,33 @@ class AppointmentRepository
     }
 
     /**
+     * Get patient record ID for an authenticated user.
+     */
+    public static function findPatientIdByUserId(
+        object|array $auth,
+        int $userId
+    ): ?int {
+        $db = self::db($auth);
+
+        $sql = 'SELECT id
+            FROM patients
+            WHERE user_id = :user_id
+              AND deleted_at IS NULL
+            LIMIT 1';
+
+        $stmt = $db->prepare($sql);
+        $stmt->execute([
+            'user_id' => $userId,
+        ]);
+
+        $patientId = $stmt->fetchColumn();
+
+        return $patientId !== false
+            ? (int) $patientId
+            : null;
+    }
+
+    /**
      * Find appointment by ID in tenant database.
      */
     public static function findById(object|array $auth, int $id): ?array
@@ -101,10 +128,14 @@ class AppointmentRepository
         $db = self::db($auth);
 
         $sql = 'SELECT a.*,
-                       pu.name AS patient_name, pu.email AS patient_email,
-                       du.name AS provider_name, du.email AS provider_email
+                       p.user_id AS patient_user_id,
+                       p.encrypted_data AS patient_encrypted_data,
+                       pu.email AS patient_email,
+                       du.name AS provider_name,
+                       du.email AS provider_email
                 FROM appointments a
-                LEFT JOIN users pu ON pu.id = a.patient_id
+                LEFT JOIN patients p ON p.id = a.patient_id
+                LEFT JOIN users pu ON pu.id = p.user_id
                 LEFT JOIN users du ON du.id = a.provider_id
                 WHERE a.id = :id
                 LIMIT 1';
@@ -130,25 +161,31 @@ class AppointmentRepository
             $fields[] = 'patient_id = :patient_id';
             $params['patient_id'] = $data['patient_id'];
         }
+
         if (array_key_exists('provider_id', $data)) {
             $fields[] = 'provider_id = :provider_id';
             $params['provider_id'] = $data['provider_id'];
         }
+
         if (array_key_exists('start_at', $data)) {
             $fields[] = 'start_at = :start_at';
             $params['start_at'] = $data['start_at'];
         }
+
         if (array_key_exists('end_at', $data)) {
             $fields[] = 'end_at = :end_at';
             $params['end_at'] = $data['end_at'];
         }
+
         if (array_key_exists('status', $data)) {
             $fields[] = 'status = :status';
             $params['status'] = $data['status'];
+
             if ($data['status'] === 'cancelled') {
                 $fields[] = 'cancelled_at = NOW()';
             }
         }
+
         if (array_key_exists('reason', $data)) {
             $fields[] = 'reason = :reason';
             $params['reason'] = $data['reason'];
@@ -159,7 +196,9 @@ class AppointmentRepository
         }
 
         $sql = 'UPDATE appointments SET ' . implode(', ', $fields) . ' WHERE id = :id';
+
         $stmt = $db->prepare($sql);
+
         return $stmt->execute($params);
     }
 
@@ -171,12 +210,17 @@ class AppointmentRepository
         $db = self::db($auth);
 
         if ($status === 'cancelled') {
-            $sql = 'UPDATE appointments SET status = :status, cancelled_at = NOW() WHERE id = :id';
+            $sql = 'UPDATE appointments
+                    SET status = :status, cancelled_at = NOW()
+                    WHERE id = :id';
         } else {
-            $sql = 'UPDATE appointments SET status = :status WHERE id = :id';
+            $sql = 'UPDATE appointments
+                    SET status = :status
+                    WHERE id = :id';
         }
 
         $stmt = $db->prepare($sql);
+
         return $stmt->execute([
             'id'     => $id,
             'status' => $status,
@@ -186,15 +230,22 @@ class AppointmentRepository
     /**
      * Cancel an appointment with optional reason.
      */
-    public static function cancel(object|array $auth, int $id, ?string $reason = null): bool
-    {
+    public static function cancel(
+        object|array $auth,
+        int $id,
+        ?string $reason = null
+    ): bool {
         $db = self::db($auth);
 
         if ($reason !== null) {
             $sql = 'UPDATE appointments
-                    SET status = "cancelled", cancelled_at = NOW(), reason = :reason
+                    SET status = "cancelled",
+                        cancelled_at = NOW(),
+                        reason = :reason
                     WHERE id = :id';
+
             $stmt = $db->prepare($sql);
+
             return $stmt->execute([
                 'id'     => $id,
                 'reason' => $reason,
@@ -202,10 +253,15 @@ class AppointmentRepository
         }
 
         $sql = 'UPDATE appointments
-                SET status = "cancelled", cancelled_at = NOW()
+                SET status = "cancelled",
+                    cancelled_at = NOW()
                 WHERE id = :id';
+
         $stmt = $db->prepare($sql);
-        return $stmt->execute(['id' => $id]);
+
+        return $stmt->execute([
+            'id' => $id,
+        ]);
     }
 
     /**
@@ -219,10 +275,14 @@ class AppointmentRepository
         $db = self::db($auth);
 
         $sql = 'SELECT a.*,
-                       pu.name AS patient_name, pu.email AS patient_email,
-                       du.name AS provider_name, du.email AS provider_email
+                       p.user_id AS patient_user_id,
+                       p.encrypted_data AS patient_encrypted_data,
+                       pu.email AS patient_email,
+                       du.name AS provider_name,
+                       du.email AS provider_email
                 FROM appointments a
-                LEFT JOIN users pu ON pu.id = a.patient_id
+                LEFT JOIN patients p ON p.id = a.patient_id
+                LEFT JOIN users pu ON pu.id = p.user_id
                 LEFT JOIN users du ON du.id = a.provider_id
                 WHERE a.start_at >= NOW()
                   AND a.status != "cancelled"';
@@ -250,15 +310,21 @@ class AppointmentRepository
     /**
      * List appointments with flexible filtering options.
      */
-    public static function listAll(object|array $auth, array $filters = []): array
-    {
+    public static function listAll(
+        object|array $auth,
+        array $filters = []
+    ): array {
         $db = self::db($auth);
 
         $sql = 'SELECT a.*,
-                       pu.name AS patient_name, pu.email AS patient_email,
-                       du.name AS provider_name, du.email AS provider_email
+                       p.user_id AS patient_user_id,
+                       p.encrypted_data AS patient_encrypted_data,
+                       pu.email AS patient_email,
+                       du.name AS provider_name,
+                       du.email AS provider_email
                 FROM appointments a
-                LEFT JOIN users pu ON pu.id = a.patient_id
+                LEFT JOIN patients p ON p.id = a.patient_id
+                LEFT JOIN users pu ON pu.id = p.user_id
                 LEFT JOIN users du ON du.id = a.provider_id
                 WHERE 1=1';
 

@@ -165,9 +165,21 @@ class NotificationController
      */
     private static function userId(object|array $user): int
     {
-        $id = is_object($user)
-            ? ($user->id ?? $user->user_id ?? null)
-            : ($user['id'] ?? $user['user_id'] ?? null);
+        if (is_object($user)) {
+            $id = $user->user['id']
+                ?? $user->user['user_id']
+                ?? $user->id
+                ?? $user->user_id
+                ?? $user->sub
+                ?? null;
+        } else {
+            $id = $user['user']['id']
+                ?? $user['user']['user_id']
+                ?? $user['id']
+                ?? $user['user_id']
+                ?? $user['sub']
+                ?? null;
+        }
 
         $id = (int) $id;
 

@@ -95,6 +95,32 @@ class UserRepository
     }
 
     /**
+     * Get all active Provider users in the current tenant.
+     */
+    public static function findProviders(object $auth): array
+    {
+        $db = self::db($auth);
+
+        $stmt = $db->query(
+            'SELECT DISTINCT
+            u.id,
+            u.name,
+            u.email,
+            u.status
+         FROM users u
+         INNER JOIN user_roles ur
+            ON ur.user_id = u.id
+         INNER JOIN roles r
+            ON r.id = ur.role_id
+         WHERE r.name = \'Provider\'
+           AND u.status = \'active\'
+         ORDER BY u.name ASC'
+        );
+
+        return $stmt->fetchAll();
+    }
+
+    /**
      * Find a user by email.
      */
     public static function findByEmail(
