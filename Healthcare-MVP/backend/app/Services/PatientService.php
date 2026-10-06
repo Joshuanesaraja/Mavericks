@@ -48,19 +48,49 @@ class PatientService
     }
 
     /**
-     * Get all active patients.
+     * Get one API page of active patients.
+     *
+     * The API batch is intentionally fixed at 10 records.
+     * The frontend handles the 5-record visual pages.
      */
-    public function getAll(): array
-    {
-        $patients = $this->repository->findAll();
+    public function getPage(
+        int $page = 1,
+        int $limit = 10
+    ): array {
+        $page = max(1, $page);
 
         /*
-         * Decrypt patient data only when returning
-         * it to the API.
-         */
-        foreach ($patients as &$patient) {
+        * Keep the server-side batch size fixed at 10.
+        *
+        * Even if somebody manually sends ?limit=100,
+        * this endpoint will still return only 10.
+        */
+        $limit = 10;
+
+        $offset =
+            ($page - 1) *
+            $limit;
+
+        $patients =
+            $this->repository->findPage(
+                $limit,
+                $offset
+            );
+
+        $total =
+            $this->repository->countAll();
+
+        /*
+        * Decrypt patient data only when returning
+        * it to the API.
+        */
+        foreach (
+            $patients as &$patient
+        ) {
             if (
-                isset($patient['encrypted_data']) &&
+                isset(
+                    $patient['encrypted_data']
+                ) &&
                 $patient['encrypted_data'] !== ''
             ) {
                 $patient['encrypted_data'] =
@@ -72,7 +102,23 @@ class PatientService
 
         unset($patient);
 
-        return $patients;
+        return [
+            'patients' => $patients,
+
+            'pagination' => [
+                'page' => $page,
+
+                'limit' => $limit,
+
+                'total' => $total,
+
+                'has_more' =>
+                    (
+                        $offset +
+                        count($patients)
+                    ) < $total
+            ]
+        ];
     }
 
     /**

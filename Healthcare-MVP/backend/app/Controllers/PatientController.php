@@ -19,9 +19,14 @@ class PatientController
      * GET /patients
      */
     public function index(
-        object $authUser
+        object $authUser,
+        int $page = 1,
+        int $limit = 10
     ): array {
-        return $this->service->getAll();
+        return $this->service->getPage(
+            $page,
+            $limit
+        );
     }
 
     /**

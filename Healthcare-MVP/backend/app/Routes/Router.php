@@ -544,7 +544,13 @@ class Router
             }
 
             try {
-                $result = self::patientController($auth)->index($auth);
+                $result =
+                self::patientController($auth)
+                    ->index(
+                        $auth,
+                        (int) ($_GET['page'] ?? 1),
+                        (int) ($_GET['limit'] ?? 10)
+                    );
 
                 Response::success(
                     $result,
