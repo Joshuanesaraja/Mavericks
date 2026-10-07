@@ -1,4 +1,38 @@
 <?php
+$origin = $_SERVER['HTTP_ORIGIN'] ?? '';
+
+$allowedOrigin = false;
+
+if ($origin === 'http://localhost:3000') {
+    $allowedOrigin = true;
+}
+
+if (
+    preg_match(
+        '/^http:\/\/[a-z0-9-]+\.localhost:3000$/i',
+        $origin
+    )
+) {
+    $allowedOrigin = true;
+}
+
+if ($allowedOrigin) {
+    header("Access-Control-Allow-Origin: $origin");
+    header("Access-Control-Allow-Methods: GET, POST, PUT, DELETE, OPTIONS");
+    header("Access-Control-Allow-Headers: Content-Type, X-CSRF-Token, Authorization");
+    header("Access-Control-Allow-Credentials: true");
+}
+
+if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
+    http_response_code(200);
+    exit();
+}
+
+session_set_cookie_params([
+    'samesite' => 'None',
+    'secure' => true,
+    'httponly' => true,
+]);
 
 session_start();
 

@@ -1,6 +1,8 @@
 <?php
 
 require_once __DIR__ . '/../Repositories/AppointmentRepository.php';
+require_once __DIR__ . '/../Security/AES.php';
+require_once __DIR__ . '/NotificationService.php';
 
 class AppointmentService
 {
@@ -32,6 +34,31 @@ class AppointmentService
             return (array) ($user->roles ?? []);
         }
         return (array) ($user['roles'] ?? []);
+    }
+
+    /**
+     * Add decrypted patient name to an appointment.
+     */
+    private static function addPatientName(array $appointment): array
+    {
+        $encryptedData = $appointment['patient_encrypted_data'] ?? null;
+
+        if (!empty($encryptedData)) {
+            try {
+                $patientData = AES::decrypt($encryptedData);
+                $parts = array_map('trim', explode(',', $patientData));
+
+                $appointment['patient_name'] = $parts[0] ?? null;
+            } catch (Throwable $e) {
+                $appointment['patient_name'] = null;
+            }
+        } else {
+            $appointment['patient_name'] = null;
+        }
+
+        unset($appointment['patient_encrypted_data']);
+
+        return $appointment;
     }
 
     /**
@@ -80,13 +107,20 @@ class AppointmentService
         $formattedStart = date('Y-m-d H:i:s', $startTs);
         $formattedEnd   = date('Y-m-d H:i:s', $endTs);
 
-        // RBAC: If user is Patient, they must book for themselves
-        if (self::isPatientOnly($roles) && $patientId !== $userId) {
-            return [
-                'success' => false,
-                'code'    => 403,
-                'message' => 'Patients can only book appointments for themselves'
-            ];
+        // RBAC: Patient users can only book appointments for themselves
+        if (self::isPatientOnly($roles)) {
+            $ownPatientId = AppointmentRepository::findPatientIdByUserId(
+                $user,
+                $userId
+            );
+
+            if ($ownPatientId === null || $patientId !== $ownPatientId) {
+                return [
+                    'success' => false,
+                    'code'    => 403,
+                    'message' => 'Patients can only book appointments for themselves'
+                ];
+            }
         }
 
         // Time Conflict Check: Ensure provider has no overlapping appointments
@@ -110,6 +144,15 @@ class AppointmentService
 
         $appointment = AppointmentRepository::findById($user, $appointmentId);
 
+        if ($appointment) {
+            $appointment = self::addPatientName($appointment);
+        }
+        if ($appointment) {
+            NotificationService::appointmentCreated(
+                $user,
+                $appointment
+            );
+        }
         return [
             'success' => true,
             'code'    => 201,
@@ -304,12 +347,24 @@ class AppointmentService
         $providerFilter = null;
 
         if (in_array('Patient', $roles, true) && count($roles) === 1) {
-            $patientFilter = $userId;
+            $patientFilter = AppointmentRepository::findPatientIdByUserId(
+                $user,
+                $userId
+            );
         } elseif (in_array('Provider', $roles, true) && !in_array('Admin', $roles, true)) {
             $providerFilter = $userId;
         }
 
-        $appointments = AppointmentRepository::getUpcoming($user, $patientFilter, $providerFilter);
+        $appointments = AppointmentRepository::getUpcoming(
+            $user,
+            $patientFilter,
+            $providerFilter
+        );
+
+        $appointments = array_map(
+            [self::class, 'addPatientName'],
+            $appointments
+        );
 
         return [
             'success' => true,
@@ -326,6 +381,10 @@ class AppointmentService
     {
         $appointment = AppointmentRepository::findById($user, $appointmentId);
 
+        if ($appointment) {
+            $appointment = self::addPatientName($appointment);
+        }
+
         if (!$appointment) {
             return [
                 'success' => false,
@@ -337,7 +396,10 @@ class AppointmentService
         $userId = self::getUserId($user);
         $roles  = self::getUserRoles($user);
 
-        if (self::isPatientOnly($roles) && (int) $appointment['patient_id'] !== $userId) {
+        if (
+            self::isPatientOnly($roles) &&
+            (int) $appointment['patient_user_id'] !== $userId
+        ) {
             return [
                 'success' => false,
                 'code'    => 403,
@@ -371,6 +433,11 @@ class AppointmentService
 
         $appointments = AppointmentRepository::listAll($user, $filters);
 
+        $appointments = array_map(
+            [self::class, 'addPatientName'],
+            $appointments
+        );
+
         return [
             'success' => true,
             'code'    => 200,
@@ -382,9 +449,9 @@ class AppointmentService
     private static function isPatientOnly(array $roles): bool
     {
         return in_array('Patient', $roles, true) &&
-               !in_array('Admin', $roles, true) &&
-               !in_array('Provider', $roles, true) &&
-               !in_array('Nurse', $roles, true);
+            !in_array('Admin', $roles, true) &&
+            !in_array('Provider', $roles, true) &&
+            !in_array('Nurse', $roles, true);
     }
 
     private static function canModifyAppointment(object|array $user, array $appointment): bool
@@ -400,7 +467,10 @@ class AppointmentService
             return true;
         }
 
-        if (in_array('Patient', $roles, true) && (int) $appointment['patient_id'] === $userId) {
+        if (
+            self::isPatientOnly($roles) &&
+            (int) $appointment['patient_user_id'] === $userId
+        ) {
             return true;
         }
 

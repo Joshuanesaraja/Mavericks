@@ -45,6 +45,23 @@ class UserController
         }
     }
 
+    /**
+     * Get active Provider users for appointment selection.
+     */
+    public static function providers(object $auth): void
+    {
+        try {
+            $providers = UserService::getProviders($auth);
+
+            Response::success($providers);
+        } catch (Throwable $e) {
+            Response::error(
+                $e->getMessage(),
+                500
+            );
+        }
+    }
+
     public static function show(
         object $auth,
         int $userId

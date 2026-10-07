@@ -26,6 +26,14 @@ class UserService
     }
 
     /**
+     * Get active Provider users in the current tenant.
+     */
+    public static function getProviders(object $auth): array
+    {
+        return UserRepository::findProviders($auth);
+    }
+
+    /**
      * Get a single user.
      */
     public static function getUser(

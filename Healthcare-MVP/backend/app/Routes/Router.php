@@ -13,6 +13,8 @@ require_once __DIR__ . '/../Controllers/AppointmentController.php';
 require_once __DIR__ . '/../Controllers/PrescriptionController.php';
 require_once __DIR__ . '/../Controllers/CommunicationController.php';
 require_once __DIR__ . '/../Controllers/CalendarController.php';
+require_once __DIR__ . '/../Controllers/NotificationController.php';
+
 
 require_once __DIR__ . '/../Services/PatientService.php';
 require_once __DIR__ . '/../Repositories/PatientRepository.php';
@@ -187,6 +189,24 @@ class Router
                 $decryptedInput
             );
 
+            return;
+        }
+
+        // get all providers
+
+        if ($method === 'GET' && $request === 'providers') {
+            $auth = AuthMiddleware::handle();
+
+            if (
+                !RoleMiddleware::handle(
+                    $auth,
+                    ['Provider', 'Nurse', 'Patient']
+                )
+            ) {
+                return;
+            }
+
+            UserController::providers($auth);
             return;
         }
 
@@ -507,7 +527,42 @@ class Router
         // MODULE 3: PATIENT MANAGEMENT
         // Provider + Nurse
         // =========================================================
+        // GET /patients/all
+        if (
+            $method === 'GET' &&
+            $request === 'patients/all'
+        ) {
+            $auth = AuthMiddleware::handle();
 
+            if ($auth === null) {
+                return;
+            }
+
+            if (!RoleMiddleware::handle(
+                $auth,
+                ['Provider', 'Nurse']
+            )) {
+                return;
+            }
+
+            try {
+                $result =
+                    self::patientController($auth)
+                    ->all($auth);
+
+                Response::success(
+                    $result,
+                    'All patients retrieved successfully.'
+                );
+            } catch (Throwable $e) {
+                Response::error(
+                    $e->getMessage(),
+                    400
+                );
+            }
+
+            return;
+        }
         // GET /patients
         if ($method === 'GET' && $request === 'patients') {
             $auth = AuthMiddleware::handle();
@@ -524,7 +579,13 @@ class Router
             }
 
             try {
-                $result = self::patientController($auth)->index($auth);
+                $result =
+                    self::patientController($auth)
+                    ->index(
+                        $auth,
+                        (int) ($_GET['page'] ?? 1),
+                        (int) ($_GET['limit'] ?? 10)
+                    );
 
                 Response::success(
                     $result,
@@ -838,7 +899,7 @@ class Router
 
             if (!RoleMiddleware::handle(
                 $auth,
-                ['Provider', 'Nurse', 'Patient']
+                ['Admin', 'Provider', 'Nurse', 'Patient']
             )) {
                 return;
             }
@@ -883,7 +944,7 @@ class Router
                 return;
             }
 
-            if (!RoleMiddleware::handle($auth, ['Provider', 'Admin'])) {
+            if (!RoleMiddleware::handle($auth, ['Provider'])) {
                 return;
             }
 
@@ -927,7 +988,7 @@ class Router
 
             if (!RoleMiddleware::handle(
                 $auth,
-                ['Admin', 'Provider', 'Nurse', 'Patient', 'Pharmacist']
+                ['Provider', 'Pharmacist']
             )) {
                 return;
             }
@@ -948,7 +1009,7 @@ class Router
 
             if (!RoleMiddleware::handle(
                 $auth,
-                ['Admin', 'Provider', 'Nurse', 'Patient', 'Pharmacist']
+                ['Provider', 'Pharmacist']
             )) {
                 return;
             }
@@ -1067,19 +1128,35 @@ class Router
         // MODULE 7: COMMUNICATION
         // =========================================================
 
+        /*
+        * POST /notes/create
+        * POST /notes
+        *
+        * ONLY Provider and Nurse.
+        */
         if (
             $method === 'POST' &&
-            ($request === 'notes/create' || $request === 'notes')
+            (
+                $request === 'notes/create' ||
+                $request === 'notes'
+            )
         ) {
-            $auth = AuthMiddleware::handle();
+            $auth =
+                AuthMiddleware::handle();
+
             if ($auth === null) {
                 return;
             }
 
-            if (!RoleMiddleware::handle(
-                $auth,
-                ['Provider', 'Nurse', 'Admin']
-            )) {
+            if (
+                !RoleMiddleware::handle(
+                    $auth,
+                    [
+                        'Provider',
+                        'Nurse'
+                    ]
+                )
+            ) {
                 return;
             }
 
@@ -1091,40 +1168,71 @@ class Router
             return;
         }
 
+
+        /*
+        * GET /notes?appointment_id=X
+        *
+        * ONLY Provider and Nurse.
+        */
         if (
             $method === 'GET' &&
             $request === 'notes'
         ) {
-            $auth = AuthMiddleware::handle();
+            $auth =
+                AuthMiddleware::handle();
+
             if ($auth === null) {
                 return;
             }
 
-            if (!RoleMiddleware::handle(
-                $auth,
-                ['Admin', 'Provider', 'Nurse', 'Patient', 'Pharmacist']
-            )) {
+            if (
+                !RoleMiddleware::handle(
+                    $auth,
+                    [
+                        'Provider',
+                        'Nurse'
+                    ]
+                )
+            ) {
                 return;
             }
 
-            CommunicationController::getNotes($auth);
+            CommunicationController::getNotes(
+                $auth
+            );
 
             return;
         }
 
+
+        /*
+        * POST /messages/send
+        *
+        * ONLY Provider and Nurse.
+        */
         if (
             $method === 'POST' &&
-            ($request === 'messages/send' || $request === 'messages')
+            (
+                $request === 'messages/send' ||
+                $request === 'messages'
+            )
         ) {
-            $auth = AuthMiddleware::handle();
+            $auth =
+                AuthMiddleware::handle();
+
             if ($auth === null) {
                 return;
             }
 
-            if (!RoleMiddleware::handle(
-                $auth,
-                ['Admin', 'Provider', 'Nurse', 'Patient', 'Pharmacist']
-            )) {
+            if (
+                !RoleMiddleware::handle(
+                    $auth,
+                    [
+                        'Provider',
+                        'Nurse'
+                    ]
+                )
+            ) {
                 return;
             }
 
@@ -1136,27 +1244,41 @@ class Router
             return;
         }
 
+
+        /*
+        * GET /messages/history?appointment_id=X
+        *
+        * ONLY Provider and Nurse.
+        */
         if (
             $method === 'GET' &&
-            ($request === 'messages/history' || $request === 'messages')
+            $request === 'messages/history'
         ) {
-            $auth = AuthMiddleware::handle();
+            $auth =
+                AuthMiddleware::handle();
+
             if ($auth === null) {
                 return;
             }
 
-            if (!RoleMiddleware::handle(
-                $auth,
-                ['Admin', 'Provider', 'Nurse', 'Patient', 'Pharmacist']
-            )) {
+            if (
+                !RoleMiddleware::handle(
+                    $auth,
+                    [
+                        'Provider',
+                        'Nurse'
+                    ]
+                )
+            ) {
                 return;
             }
 
-            CommunicationController::getMessageHistory($auth);
+            CommunicationController::getMessageHistory(
+                $auth
+            );
 
             return;
         }
-
 
         // =========================================================
         // MODULE 10: CALENDAR
@@ -1414,6 +1536,147 @@ class Router
             }
 
             BillingController::getBillingSummary($auth);
+
+            return;
+        }
+        // =========================================================
+        // MODULE: NOTIFICATIONS
+        // Provider + Nurse
+        // =========================================================
+
+        // GET /notifications
+        if (
+            $method === 'GET' &&
+            $request === 'notifications'
+        ) {
+            $auth = AuthMiddleware::handle();
+
+            if ($auth === null) {
+                return;
+            }
+
+            if (!RoleMiddleware::handle(
+                $auth,
+                [
+                    'Provider',
+                    'Nurse'
+                ]
+            )) {
+                return;
+            }
+
+            NotificationController::list($auth);
+
+            return;
+        }
+
+
+        // GET /notifications/unread
+        if (
+            $method === 'GET' &&
+            $request === 'notifications/unread'
+        ) {
+            $auth = AuthMiddleware::handle();
+
+            if ($auth === null) {
+                return;
+            }
+
+            if (!RoleMiddleware::handle(
+                $auth,
+                [
+                    'Provider',
+                    'Nurse'
+                ]
+            )) {
+                return;
+            }
+
+            NotificationController::unread($auth);
+
+            return;
+        }
+
+
+        // GET /notifications/unread-count
+        if (
+            $method === 'GET' &&
+            $request === 'notifications/unread-count'
+        ) {
+            $auth = AuthMiddleware::handle();
+
+            if ($auth === null) {
+                return;
+            }
+
+            if (!RoleMiddleware::handle(
+                $auth,
+                [
+                    'Provider',
+                    'Nurse'
+                ]
+            )) {
+                return;
+            }
+
+            NotificationController::unreadCount($auth);
+
+            return;
+        }
+
+
+        // PUT /notifications/read
+        if (
+            $method === 'PUT' &&
+            $request === 'notifications/read'
+        ) {
+            $auth = AuthMiddleware::handle();
+
+            if ($auth === null) {
+                return;
+            }
+
+            if (!RoleMiddleware::handle(
+                $auth,
+                [
+                    'Provider',
+                    'Nurse'
+                ]
+            )) {
+                return;
+            }
+
+            NotificationController::markAsRead(
+                $auth,
+                $decryptedInput
+            );
+
+            return;
+        }
+
+
+        // PUT /notifications/read-all
+        if (
+            $method === 'PUT' &&
+            $request === 'notifications/read-all'
+        ) {
+            $auth = AuthMiddleware::handle();
+
+            if ($auth === null) {
+                return;
+            }
+
+            if (!RoleMiddleware::handle(
+                $auth,
+                [
+                    'Provider',
+                    'Nurse'
+                ]
+            )) {
+                return;
+            }
+
+            NotificationController::markAllAsRead($auth);
 
             return;
         }
