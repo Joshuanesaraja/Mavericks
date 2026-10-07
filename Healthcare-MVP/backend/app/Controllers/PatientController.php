@@ -15,6 +15,11 @@ class PatientController
         $this->service = $service;
     }
 
+    public function all(
+        object $authUser
+    ): array {
+        return $this->service->getAll();
+    }
     /**
      * GET /patients
      */

@@ -120,7 +120,31 @@ class PatientService
             ]
         ];
     }
+public function getAll(): array
+{
+    $patients =
+        $this->repository->findAllActive();
 
+    foreach (
+        $patients as &$patient
+    ) {
+        if (
+            isset($patient['encrypted_data']) &&
+            $patient['encrypted_data'] !== ''
+        ) {
+            $patient['encrypted_data'] =
+                \AES::decrypt(
+                    $patient['encrypted_data']
+                );
+        }
+    }
+
+    unset($patient);
+
+    return [
+        'patients' => $patients
+    ];
+}
     /**
      * Get one patient.
      */

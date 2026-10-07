@@ -527,7 +527,42 @@ class Router
         // MODULE 3: PATIENT MANAGEMENT
         // Provider + Nurse
         // =========================================================
+        // GET /patients/all
+            if (
+                $method === 'GET' &&
+                $request === 'patients/all'
+            ) {
+                $auth = AuthMiddleware::handle();
 
+                if ($auth === null) {
+                    return;
+                }
+
+                if (!RoleMiddleware::handle(
+                    $auth,
+                    ['Provider', 'Nurse']
+                )) {
+                    return;
+                }
+
+                try {
+                    $result =
+                        self::patientController($auth)
+                            ->all($auth);
+
+                    Response::success(
+                        $result,
+                        'All patients retrieved successfully.'
+                    );
+                } catch (Throwable $e) {
+                    Response::error(
+                        $e->getMessage(),
+                        400
+                    );
+                }
+
+                return;
+}
         // GET /patients
         if ($method === 'GET' && $request === 'patients') {
             $auth = AuthMiddleware::handle();

@@ -88,6 +88,24 @@ class PatientRepository
         );
     }
 
+    public function findAllActive(): array
+{
+    $stmt = $this->db->query("
+        SELECT
+            id,
+            user_id,
+            encrypted_data,
+            created_at,
+            updated_at
+        FROM patients
+        WHERE deleted_at IS NULL
+        ORDER BY id ASC
+    ");
+
+    return $stmt->fetchAll(
+        PDO::FETCH_ASSOC
+    );
+}
     /**
      * Count active patients in the
      * current tenant database.
