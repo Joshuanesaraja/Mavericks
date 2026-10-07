@@ -528,41 +528,41 @@ class Router
         // Provider + Nurse
         // =========================================================
         // GET /patients/all
-            if (
-                $method === 'GET' &&
-                $request === 'patients/all'
-            ) {
-                $auth = AuthMiddleware::handle();
+        if (
+            $method === 'GET' &&
+            $request === 'patients/all'
+        ) {
+            $auth = AuthMiddleware::handle();
 
-                if ($auth === null) {
-                    return;
-                }
-
-                if (!RoleMiddleware::handle(
-                    $auth,
-                    ['Provider', 'Nurse']
-                )) {
-                    return;
-                }
-
-                try {
-                    $result =
-                        self::patientController($auth)
-                            ->all($auth);
-
-                    Response::success(
-                        $result,
-                        'All patients retrieved successfully.'
-                    );
-                } catch (Throwable $e) {
-                    Response::error(
-                        $e->getMessage(),
-                        400
-                    );
-                }
-
+            if ($auth === null) {
                 return;
-}
+            }
+
+            if (!RoleMiddleware::handle(
+                $auth,
+                ['Provider', 'Nurse']
+            )) {
+                return;
+            }
+
+            try {
+                $result =
+                    self::patientController($auth)
+                    ->all($auth);
+
+                Response::success(
+                    $result,
+                    'All patients retrieved successfully.'
+                );
+            } catch (Throwable $e) {
+                Response::error(
+                    $e->getMessage(),
+                    400
+                );
+            }
+
+            return;
+        }
         // GET /patients
         if ($method === 'GET' && $request === 'patients') {
             $auth = AuthMiddleware::handle();
@@ -580,7 +580,7 @@ class Router
 
             try {
                 $result =
-                self::patientController($auth)
+                    self::patientController($auth)
                     ->index(
                         $auth,
                         (int) ($_GET['page'] ?? 1),
@@ -944,7 +944,7 @@ class Router
                 return;
             }
 
-            if (!RoleMiddleware::handle($auth, ['Provider', 'Admin'])) {
+            if (!RoleMiddleware::handle($auth, ['Provider'])) {
                 return;
             }
 
@@ -988,7 +988,7 @@ class Router
 
             if (!RoleMiddleware::handle(
                 $auth,
-                ['Admin', 'Provider', 'Nurse', 'Patient', 'Pharmacist']
+                ['Provider', 'Pharmacist']
             )) {
                 return;
             }
@@ -1009,7 +1009,7 @@ class Router
 
             if (!RoleMiddleware::handle(
                 $auth,
-                ['Admin', 'Provider', 'Nurse', 'Patient', 'Pharmacist']
+                ['Provider', 'Pharmacist']
             )) {
                 return;
             }
